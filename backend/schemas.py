@@ -11,12 +11,12 @@ from typing import Dict, List, Optional
 # ── Request ────────────────────────────────────────────────────────────────
 class AnalyzeRequest(BaseModel):
     url        : str
-    max_comments: int = 500
+    max_comments: int = 1000
     model      : str  = 'ensemble'   # 'ml', 'dl', 'ensemble'
 
     @validator('max_comments')
     def clamp_comments(cls, v):
-        return max(10, min(v, 1000))
+        return max(10, min(v, 10000))
 
     @validator('model')
     def validate_model(cls, v):

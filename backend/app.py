@@ -43,7 +43,7 @@ logger = logging.getLogger(__name__)
 
 # ── Load environment ──────────────────────────────────────────────────────
 YOUTUBE_API_KEY = os.getenv('YOUTUBE_API_KEY', '')
-MAX_COMMENTS    = int(os.getenv('MAX_COMMENTS', '500'))
+MAX_COMMENTS    = int(os.getenv('MAX_COMMENTS', '10000'))
 DEMO_MODE       = os.getenv('DEMO_MODE', 'false').lower() == 'true'
 ALLOWED_ORIGINS = os.getenv('ALLOWED_ORIGINS', 'http://localhost:3000').split(',')
 

@@ -93,7 +93,7 @@ body {
 /* ── Input field ─────────────────────────────────────────────────────────── */
 .url-input {
   background: rgba(255, 255, 255, 0.03);
-  border: 1.5px solid rgba(108, 99, 255, 0.2);
+  border: 1.5px solid rgba(108, 99, 255, 0.35);
   border-radius: 12px;
   color: #e8e8f0;
   font-family: 'JetBrains Mono', monospace;
@@ -111,12 +111,12 @@ body {
 }
 
 .url-input::placeholder {
-  color: rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.35);
 }
 
 /* ── Analyze button ──────────────────────────────────────────────────────── */
 .analyze-btn {
-  background: linear-gradient(135deg, #6c63ff 0%, #4ecdc4 100%);
+  background: linear-gradient(135deg, #7c6fff 0%, #00e5c0 100%);
   border: none;
   border-radius: 12px;
   color: white;
@@ -130,6 +130,7 @@ body {
   position: relative;
   overflow: hidden;
   white-space: nowrap;
+  box-shadow: 0 4px 20px rgba(108, 99, 255, 0.35), 0 0 0 1px rgba(255,255,255,0.08) inset;
 }
 
 .analyze-btn::before {
@@ -145,7 +146,8 @@ body {
 
 .analyze-btn:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 30px rgba(108, 99, 255, 0.4);
+  box-shadow: 0 8px 35px rgba(108, 99, 255, 0.55), 0 0 0 1px rgba(255,255,255,0.12) inset;
+  background: linear-gradient(135deg, #8f85ff 0%, #00f0cc 100%);
 }
 
 .analyze-btn:active { transform: translateY(0); }

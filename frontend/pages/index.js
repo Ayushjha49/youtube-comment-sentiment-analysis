@@ -53,7 +53,7 @@ function HeroHeader() {
         YouTube{' '}
         <span className="gradient-text">Sentiment</span>
         <br />
-        <span style={{ fontSize: '0.75em', opacity: 0.5, letterSpacing: '0.1em' }}>
+        <span style={{ fontSize: '0.75em', opacity: 0.7, letterSpacing: '0.04em' }}>
           ANALYZER
         </span>
       </h1>
@@ -84,7 +84,7 @@ function HeroHeader() {
 function SearchForm({ onSubmit, loading }) {
   const [url, setUrl]       = useState('')
   const [model, setModel]   = useState('ensemble')
-  const [maxN, setMaxN]     = useState(500)
+  const [maxN, setMaxN]     = useState(1000)
   const [showAdv, setShowAdv] = useState(false)
   const inputRef = useRef(null)
 
@@ -101,7 +101,7 @@ function SearchForm({ onSubmit, loading }) {
   const isYouTubeUrl = url.includes('youtube') || url.includes('youtu.be') || /^[A-Za-z0-9_-]{11}$/.test(url)
 
   return (
-    <div className="glass-card p-6 w-full max-w-2xl mx-auto animate-slide-up">
+    <div className="glass-card p-6 w-full max-w-2xl mx-auto animate-slide-up" style={{ borderColor: 'rgba(108,99,255,0.28)', boxShadow: '0 0 40px rgba(108,99,255,0.08), 0 2px 20px rgba(0,0,0,0.4)' }}>
       {/* URL input */}
       <div className="relative mb-4">
         {/* YouTube icon */}
@@ -206,7 +206,7 @@ function SearchForm({ onSubmit, loading }) {
             <div className="flex items-center gap-3">
               <input
                 type="range"
-                min={50} max={1000} step={50}
+                min={50} max={10000} step={50}
                 value={maxN}
                 onChange={e => setMaxN(Number(e.target.value))}
                 className="flex-1"
@@ -218,22 +218,7 @@ function SearchForm({ onSubmit, loading }) {
         </div>
       )}
 
-      {/* Demo links */}
-      <div className="mt-4 flex flex-wrap gap-2 justify-center">
-        <span className="font-mono text-[10px] text-white/20">Try:</span>
-        {[
-          { label: 'MrBeast video',   url: 'https://www.youtube.com/watch?v=XxyZnqJF3oQ' },
-          { label: 'Random trending', url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' },
-        ].map(demo => (
-          <button
-            key={demo.label}
-            onClick={() => setUrl(demo.url)}
-            className="font-mono text-[10px] text-white/25 hover:text-white/50 transition-colors underline underline-offset-2"
-          >
-            {demo.label}
-          </button>
-        ))}
-      </div>
+
     </div>
   )
 }
@@ -351,7 +336,7 @@ export default function Home() {
           {/* Footer */}
           {state === 'idle' && (
             <footer className="mt-16 text-center">
-              <p className="font-mono text-[11px] text-white/15 max-w-sm mx-auto">
+              <p className="font-mono text-[11px] text-white/45 max-w-sm mx-auto">
                 Powered by BiLSTM + Attention + ML Ensemble · Trained on 125k+ multilingual YouTube comments · Handles Nepali/Hindi Roman script
               </p>
             </footer>
