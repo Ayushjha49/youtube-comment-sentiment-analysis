@@ -251,16 +251,33 @@ function ErrorBanner({ message, onDismiss }) {
 
 // ── Main page ────────────────────────────────────────────────────────────────
 export default function Home() {
-  const [state, setState] = useState('idle')  // idle | loading | results | error
-  const [result, setResult] = useState(null)
-  const [error, setError]   = useState('')
-  const [lastUrl, setLastUrl] = useState('')
+  const [state, setState]       = useState('idle')  // idle | loading | results | error
+  const [result, setResult]     = useState(null)
+  const [error, setError]       = useState('')
+  const [lastUrl, setLastUrl]   = useState('')
+  const [elapsed, setElapsed]   = useState(0)
+  const timerRef                = useRef(null)
+
+  const startTimer = () => {
+    setElapsed(0)
+    timerRef.current = setInterval(() => {
+      setElapsed(prev => prev + 1)
+    }, 1000)
+  }
+
+  const stopTimer = () => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current)
+      timerRef.current = null
+    }
+  }
 
   const handleAnalyze = async ({ url, model, max_comments }) => {
     setState('loading')
     setLastUrl(url)
     setError('')
     setResult(null)
+    startTimer()
 
     try {
       const resp = await fetch(`${API_BASE}/api/analyze`, {
@@ -270,17 +287,17 @@ export default function Home() {
       })
 
       const data = await resp.json()
+      stopTimer()
 
       if (!resp.ok || !data.success) {
         throw new Error(data.error || data.detail || 'Server error')
       }
 
-      // Small artificial delay so the loading animation completes
-      await new Promise(r => setTimeout(r, 4000))
       setResult(data)
       setState('results')
 
     } catch (err) {
+      stopTimer()
       console.error('Analysis error:', err)
       setError(err.message || 'Failed to connect to backend. Is the server running?')
       setState('error')
@@ -325,7 +342,7 @@ export default function Home() {
 
           {/* Loading state */}
           {state === 'loading' && (
-            <LoadingAnimation videoUrl={lastUrl} />
+            <LoadingAnimation videoUrl={lastUrl} elapsed={elapsed} />
           )}
 
           {/* Results state */}

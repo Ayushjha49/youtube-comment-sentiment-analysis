@@ -174,18 +174,23 @@ function SentimentPercentCard({ sentiment, pct, animDelay = 0 }) {
 
 // ── Sample comments ──────────────────────────────────────────────────────────
 function CommentChip({ text, sentiment }) {
-  const cfg = SENTIMENT_CONFIG[sentiment]
+  const cfg = SENTIMENT_CONFIG[sentiment];
   return (
     <div
-      className="px-3 py-2 rounded-lg text-sm text-white/70 font-body line-clamp-2"
+      className="px-3 py-2 rounded-lg text-sm text-white/70 font-body"
       style={{
-        background : cfg.bg,
-        borderLeft : `3px solid ${cfg.color}`,
+        background: cfg.bg,
+        borderLeft: `3px solid ${cfg.color}`, // <-- fix here
+        wordBreak: 'break-word',
+        overflowWrap: 'break-word',
+        maxWidth: '100%',
+        whiteSpace: 'pre-line',
+        overflowX: 'auto',
       }}
     >
       {text}
     </div>
-  )
+  );
 }
 
 // ── Main results dashboard ───────────────────────────────────────────────────
@@ -235,9 +240,9 @@ export default function ResultsDashboard({ result, onReset }) {
           sub={result.model_used}
         />
         <StatCard
-          label="Time"
+          label="Total Time"
           value={`${result.processing_time_s.toFixed(1)}s`}
-          sub="processing"
+          sub="fetch + predict"
         />
       </div>
 
