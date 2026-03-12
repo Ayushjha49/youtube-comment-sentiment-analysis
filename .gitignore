@@ -1,0 +1,50 @@
+# Environment
+.env
+.env.local
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+
+# Saved models (large files — use DVC or Git LFS if needed)
+backend/saved_ml_models/*.pkl
+backend/saved_dl_models/*.keras
+backend/saved_ml_models/*.h5
+backend/saved_dl_models/*.h5
+backend/saved_ml_models/*.json
+backend/saved_dl_models/*.json
+
+# Data — never commit raw/sensitive data
+data/raw/
+data/processed/
+
+# Logs
+logs/
+*.log
+
+# Node
+node_modules/
+frontend/.next/
+frontend/out/
+frontend/.env.local
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp

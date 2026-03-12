@@ -1,0 +1,33 @@
+# ── Core ──────────────────────────────────────────────────────────────────
+numpy>=1.26.0
+pandas>=2.2.0
+scikit-learn>=1.4.0
+scipy>=1.13.0
+
+# ── Deep Learning ──────────────────────────────────────────────────────────
+tensorflow>=2.16.0   # CPU version — for GPU: tensorflow[and-cuda]
+
+# ── Gradient Boosting ─────────────────────────────────────────────────────
+xgboost>=2.0.0
+
+# ── API & Web ─────────────────────────────────────────────────────────────
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0
+python-dotenv>=1.0.1
+pydantic>=2.7.0
+requests>=2.31.0
+
+# ── NLP & Text ────────────────────────────────────────────────────────────
+# (No heavy NLP deps needed — custom preprocessor handles romanized text)
+
+# ── Visualization ─────────────────────────────────────────────────────────
+matplotlib>=3.8.0
+seaborn>=0.13.0
+
+# ── Utilities ─────────────────────────────────────────────────────────────
+tqdm>=4.66.0
+
+# ── Dev only ──────────────────────────────────────────────────────────────
+# pytest>=8.0.0
+# jupyter>=1.0.0
+# ipykernel>=6.29.0
