@@ -18,12 +18,11 @@ PRODUCTION:
 
 import os
 import sys
+import time
 import logging
-import asyncio
 from contextlib import asynccontextmanager
-from typing import List
 
-from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
@@ -90,8 +89,8 @@ app.add_middleware(
 @app.get('/api/health', response_model=HealthResponse)
 async def health_check():
     """Check API and model status."""
-    predictor   = get_predictor()
-    loaded      = []
+    predictor = get_predictor()
+    loaded    = []
     if predictor._ml_loaded:
         loaded.append('ml_ensemble')
     if predictor._dl_loaded:
@@ -108,6 +107,11 @@ async def analyze_video(request: AnalyzeRequest):
     """
     Main endpoint: fetch YouTube comments and predict sentiment.
 
+    Uses pipelined fetch + predict:
+      - Fetch thread runs in background fetching comment pages
+      - Main thread starts predicting page 1 while page 2 is being fetched
+      - Total time ≈ max(fetch, predict) instead of fetch + predict
+
     Body:
         {
             "url": "https://youtube.com/watch?v=...",
@@ -115,8 +119,15 @@ async def analyze_video(request: AnalyzeRequest):
             "model": "ensemble"
         }
     """
-    from src.youtube_fetcher import extract_video_id, fetch_comments, fetch_comments_mock
-    from src.config import MAX_COMMENTS as CFG_MAX
+    from src.youtube_fetcher import (
+        extract_video_id,
+        fetch_comments_pipelined,
+        fetch_comments_mock,
+    )
+    from src.config import MAX_COMMENTS as CFG_MAX, FETCH_TIMEOUT_SECONDS
+
+    # ── Start total wall-clock timer ──────────────────────────────────────
+    total_start = time.time()
 
     # ── Extract video ID ──────────────────────────────────────────────────
     video_id = extract_video_id(request.url)
@@ -128,45 +139,68 @@ async def analyze_video(request: AnalyzeRequest):
 
     max_n = min(request.max_comments, CFG_MAX)
 
-    # ── Fetch comments ────────────────────────────────────────────────────
+    # ── Fetch + Predict (pipelined) ───────────────────────────────────────
+    predictor = get_predictor()
+
     if not YOUTUBE_API_KEY or DEMO_MODE:
+        # Demo mode — use mock comments (no pipeline needed, data is instant)
         logger.info(f'[API] Demo mode — using mock comments for video: {video_id}')
         comments, metadata = fetch_comments_mock(n=max_n)
         metadata['video_id'] = video_id
-    else:
+
+        if not comments:
+            raise HTTPException(status_code=404, detail='No comments found.')
+
         try:
-            comments, metadata = fetch_comments(
-                video_id    = video_id,
-                api_key     = YOUTUBE_API_KEY,
-                max_comments= max_n,
+            result = predictor.analyze_video(
+                comments = comments,
+                metadata = metadata,
+                mode     = request.model,
             )
+        except RuntimeError as e:
+            raise HTTPException(status_code=503, detail=f'Model error: {e}')
+        except Exception as e:
+            logger.exception(f'Unexpected error: {e}')
+            raise HTTPException(status_code=500, detail='Internal server error.')
+
+    else:
+        # Real mode — pipeline: fetch in background, predict as pages arrive
+        try:
+            page_queue, metadata = fetch_comments_pipelined(
+                video_id      = video_id,
+                api_key       = YOUTUBE_API_KEY,
+                max_comments  = max_n,
+                fetch_timeout = FETCH_TIMEOUT_SECONDS,  # 0 = no limit
+            )
+            metadata['video_id'] = video_id
+
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
         except RuntimeError as e:
             raise HTTPException(status_code=502, detail=f'YouTube API error: {e}')
 
-    if not comments:
-        raise HTTPException(
-            status_code = 404,
-            detail      = 'No comments found for this video.',
-        )
+        try:
+            result = predictor.analyze_video_pipelined(
+                page_queue = page_queue,
+                metadata   = metadata,
+                mode       = request.model,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+        except RuntimeError as e:
+            raise HTTPException(status_code=503, detail=f'Model error: {e}')
+        except Exception as e:
+            logger.exception(f'Unexpected error during pipelined analysis: {e}')
+            raise HTTPException(status_code=500, detail='Internal server error.')
 
-    # ── Run sentiment analysis ────────────────────────────────────────────
-    try:
-        predictor = get_predictor()
-        result    = predictor.analyze_video(
-            comments = comments,
-            metadata = metadata,
-            mode     = request.model,
-        )
-    except RuntimeError as e:
-        raise HTTPException(
-            status_code = 503,
-            detail      = f'Model error: {e}. Please ensure models are trained.',
-        )
-    except Exception as e:
-        logger.exception(f'Unexpected error during analysis: {e}')
-        raise HTTPException(status_code=500, detail='Internal server error.')
+    # ── True total time (fetch + predict, overlapping) ────────────────────
+    total_elapsed = time.time() - total_start
+    logger.info(
+        f'[API] ✅ Done in {total_elapsed:.1f}s | '
+        f'{result.analyzed_count} comments | '
+        f'Overall: {result.overall_sentiment} | '
+        f'Model: {result.model_used}'
+    )
 
     # ── Build response ────────────────────────────────────────────────────
     from schemas import SentimentDistribution
@@ -187,7 +221,7 @@ async def analyze_video(request: AnalyzeRequest):
         ),
         top_positive         = result.top_positive,
         top_negative         = result.top_negative,
-        processing_time_s    = result.processing_time_s,
+        processing_time_s    = round(total_elapsed, 2),  # true total time
         model_used           = result.model_used,
     )
 
@@ -256,8 +290,8 @@ if __name__ == '__main__':
     import uvicorn
     uvicorn.run(
         'app:app',
-        host    = '0.0.0.0',
-        port    = 8000,
-        reload  = True,
+        host      = '0.0.0.0',
+        port      = 8000,
+        reload    = True,
         log_level = 'info',
     )

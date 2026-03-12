@@ -27,6 +27,12 @@ YOUTUBE_API_KEY   = os.getenv('YOUTUBE_API_KEY', '')
 MAX_COMMENTS      = int(os.getenv('MAX_COMMENTS', '10000'))  # reads from .env
 COMMENT_ORDER     = 'relevance'  # 'relevance' or 'time'
 
+# ── Fetch time limit ────────────────────────────────────────────────────────
+# Fetch as many comments as possible within this many seconds, then stop
+# and analyze whatever was collected. Set to 0 to disable (fetch until
+# MAX_COMMENTS is reached). Change via .env: FETCH_TIMEOUT_SECONDS=120
+FETCH_TIMEOUT_SECONDS = int(os.getenv('FETCH_TIMEOUT_SECONDS', '30'))
+
 
 # ── Text Preprocessing ─────────────────────────────────────────────────────
 class PreprocessConfig:
