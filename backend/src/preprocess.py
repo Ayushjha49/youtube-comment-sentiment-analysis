@@ -156,15 +156,44 @@ class TextCleaner:
 
         return text
 
-    def batch_clean(self, texts: List[str], show_progress: bool = False) -> List[str]:
-        """Clean a list of texts. Returns empty string for invalid texts."""
-        if show_progress:
-            try:
-                from tqdm import tqdm
-                return [self.clean(t) for t in tqdm(texts, desc='Cleaning')]
-            except ImportError:
-                pass
-        return [self.clean(t) for t in texts]
+    def batch_clean(
+        self,
+        texts        : List[str],
+        show_progress: bool = False,
+        n_workers    : int  = 4,
+    ) -> List[str]:
+        """
+        Clean texts in parallel using threads.
+        Regex operations release Python's GIL so threads genuinely overlap.
+        Falls back to single-threaded for batches under 500 (overhead not worth it).
+        """
+        if len(texts) < 500 or n_workers <= 1:
+            if show_progress:
+                try:
+                    from tqdm import tqdm
+                    return [self.clean(t) for t in tqdm(texts, desc='Cleaning')]
+                except ImportError:
+                    pass
+            return [self.clean(t) for t in texts]
+
+        from concurrent.futures import ThreadPoolExecutor
+
+        chunk_size = max(1, len(texts) // n_workers)
+        chunks     = [texts[i:i + chunk_size] for i in range(0, len(texts), chunk_size)]
+        results    = [None] * len(chunks)
+
+        def clean_chunk(args):
+            idx, chunk = args
+            return idx, [self.clean(t) for t in chunk]
+
+        with ThreadPoolExecutor(max_workers=n_workers) as executor:
+            for idx, cleaned_chunk in executor.map(clean_chunk, enumerate(chunks)):
+                results[idx] = cleaned_chunk
+
+        flattened = []
+        for chunk in results:
+            flattened.extend(chunk)
+        return flattened
 
     def save(self, path: str):
         with open(path, 'wb') as f:

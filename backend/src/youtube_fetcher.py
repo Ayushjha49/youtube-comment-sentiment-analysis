@@ -13,6 +13,19 @@ API QUOTA NOTE:
   YouTube API has a quota of 10,000 units/day (free).
   Each commentThreads.list call costs ~1 unit.
   With pagination (100 comments/page), 500 comments = ~5 API calls.
+
+PERFORMANCE NOTES:
+  - requests.Session() reuses the underlying TCP connection across all pages,
+    avoiding the handshake overhead of opening a new connection every request.
+    For 190 pages (19k comments) this saves meaningful latency.
+
+  - REQUEST_DELAY_S defaults to 0.0 (no sleep between pages). The original
+    0.1s sleep added ~19s of pure waiting on a 190-page fetch. Only set this
+    above 0 in .env (YT_REQUEST_DELAY_S=0.1) if you hit 429 rate-limit errors.
+
+  - fetch_comments_pipelined() starts a background thread immediately and
+    returns (queue, metadata). The caller begins predicting page 1 while
+    page 2 is still being fetched, overlapping network I/O with model compute.
 """
 
 import os
@@ -21,18 +34,31 @@ import time
 import queue
 import logging
 import threading
-from typing import List, Dict, Optional, Tuple, Generator
+from typing import List, Dict, Optional, Tuple
 from urllib.parse import urlparse, parse_qs
 
 import requests
 from dotenv import load_dotenv
+from src.utils import timing_decorator
 
 load_dotenv()
 logger = logging.getLogger(__name__)
 
 YOUTUBE_API_BASE = 'https://www.googleapis.com/youtube/v3'
 
+# Delay between page requests. Default 0.0 — no delay.
+# The original 0.1s sleep wasted ~19s per 190-page fetch for no benefit.
+# Only increase if you are hitting 429 rate-limit errors from the API.
+# Configure via .env: YT_REQUEST_DELAY_S=0.1
+try:
+    REQUEST_DELAY_S = max(0.0, float(os.getenv('YT_REQUEST_DELAY_S', '0.0')))
+except ValueError:
+    REQUEST_DELAY_S = 0.0
 
+
+# =============================================================================
+# URL PARSING
+# =============================================================================
 def extract_video_id(url: str) -> Optional[str]:
     """
     Extract YouTube video ID from various URL formats:
@@ -71,6 +97,10 @@ def extract_video_id(url: str) -> Optional[str]:
     return None
 
 
+# =============================================================================
+# VIDEO METADATA
+# =============================================================================
+@timing_decorator
 def get_video_metadata(video_id: str, api_key: str) -> Dict:
     """Fetch video title, channel, view count, like count, comment count."""
     url    = f'{YOUTUBE_API_BASE}/videos'
@@ -102,26 +132,53 @@ def get_video_metadata(video_id: str, api_key: str) -> Dict:
     }
 
 
+def _parse_comment_item(item: Dict) -> Dict:
+    """Extract comment fields from a YouTube API commentThread item."""
+    top = item['snippet']['topLevelComment']['snippet']
+    return {
+        'text'       : top.get('textDisplay', ''),
+        'likes'      : top.get('likeCount', 0),
+        'author'     : top.get('authorDisplayName', 'Anonymous'),
+        'published'  : top.get('publishedAt', ''),
+        'reply_count': item['snippet'].get('totalReplyCount', 0),
+    }
+
+
+def _handle_error_response(resp: requests.Response, video_id: str) -> None:
+    """Raise appropriate exception for non-2xx API responses."""
+    if resp.status_code == 403:
+        msg = resp.json().get('error', {}).get('message', '')
+        if 'commentsDisabled' in msg or 'disabled' in msg.lower():
+            raise ValueError('Comments are disabled for this video.')
+        raise ValueError(f'API quota exceeded or forbidden: {msg}')
+    if resp.status_code == 404:
+        raise ValueError(f'Video not found: {video_id}')
+    resp.raise_for_status()
+
+
 # =============================================================================
-# ORIGINAL (sequential) — kept intact, used as fallback
+# SEQUENTIAL FETCH — used as fallback / for demo mode
 # =============================================================================
+@timing_decorator
 def fetch_comments(
-    video_id     : str,
-    api_key      : str,
-    max_comments : int = 500,
-    order        : str = 'time',
+    video_id      : str,
+    api_key       : str,
+    max_comments  : int = 500,
+    order         : str = 'time',
     include_replies: bool = False,
-    fetch_timeout: int = 0,       # seconds — 0 means no time limit
+    fetch_timeout : int = 0,
 ) -> Tuple[List[Dict], Dict]:
     """
     Fetch top-level comments from a YouTube video (sequential, blocking).
 
+    Uses requests.Session() to reuse the TCP connection across all pages.
+
     Args:
         fetch_timeout : Stop fetching after this many seconds and return
                         whatever has been collected so far. 0 = no limit.
-                        Configurable via FETCH_TIMEOUT_SECONDS in .env.
+                        Configure via .env: FETCH_TIMEOUT_SECONDS=120
     Returns:
-        comments : List of dicts with 'text', 'likes', 'author'
+        comments : List of dicts with 'text', 'likes', 'author', etc.
         metadata : Video metadata dict
     """
     if not api_key:
@@ -139,71 +196,57 @@ def fetch_comments(
 
     comments    = []
     page_token  = None
-    page_size   = min(100, max_comments)
     fetch_start = time.time()
 
-    while len(comments) < max_comments:
+    with requests.Session() as session:
+        while len(comments) < max_comments:
 
-        # ── Time-limit check ──────────────────────────────────────────────
-        if fetch_timeout > 0 and (time.time() - fetch_start) >= fetch_timeout:
-            logger.info(
-                f'[YT] Fetch timeout reached ({fetch_timeout}s). '
-                f'Collected {len(comments)} comments.'
-            )
-            break
+            # Time-limit check
+            if fetch_timeout > 0 and (time.time() - fetch_start) >= fetch_timeout:
+                logger.info(
+                    f'[YT] Fetch timeout reached ({fetch_timeout}s). '
+                    f'Collected {len(comments)} comments.'
+                )
+                break
 
-        params = {
-            'part'      : 'snippet',
-            'videoId'   : video_id,
-            'key'       : api_key,
-            'maxResults': page_size,
-            'order'     : order,
-            'textFormat': 'plainText',
-        }
-        if page_token:
-            params['pageToken'] = page_token
+            params = {
+                'part'      : 'snippet',
+                'videoId'   : video_id,
+                'key'       : api_key,
+                'maxResults': min(100, max_comments - len(comments)),
+                'order'     : order,
+                'textFormat': 'plainText',
+            }
+            if page_token:
+                params['pageToken'] = page_token
 
-        try:
-            resp = requests.get(
-                f'{YOUTUBE_API_BASE}/commentThreads',
-                params=params,
-                timeout=15,
-            )
+            try:
+                resp = session.get(
+                    f'{YOUTUBE_API_BASE}/commentThreads',
+                    params  = params,
+                    timeout = 15,
+                )
+                _handle_error_response(resp, video_id)
+                data = resp.json()
 
-            if resp.status_code == 403:
-                error_msg = resp.json().get('error', {}).get('message', '')
-                if 'commentsDisabled' in error_msg or 'disabled' in error_msg.lower():
-                    raise ValueError('Comments are disabled for this video.')
-                raise ValueError(f'API quota exceeded or forbidden: {error_msg}')
+            except (ValueError, RuntimeError):
+                raise
+            except requests.exceptions.Timeout:
+                logger.warning('[YT] Request timed out, retrying...')
+                time.sleep(2)
+                continue
+            except requests.exceptions.RequestException as e:
+                raise RuntimeError(f'YouTube API request failed: {e}')
 
-            if resp.status_code == 404:
-                raise ValueError(f'Video not found: {video_id}')
+            for item in data.get('items', []):
+                comments.append(_parse_comment_item(item))
 
-            resp.raise_for_status()
-            data = resp.json()
+            page_token = data.get('nextPageToken')
+            if not page_token:
+                break
 
-        except requests.exceptions.Timeout:
-            logger.warning('[YT] Request timed out, retrying...')
-            time.sleep(2)
-            continue
-        except requests.exceptions.RequestException as e:
-            raise RuntimeError(f'YouTube API request failed: {e}')
-
-        for item in data.get('items', []):
-            top_comment = item['snippet']['topLevelComment']['snippet']
-            comments.append({
-                'text'      : top_comment.get('textDisplay', ''),
-                'likes'     : top_comment.get('likeCount', 0),
-                'author'    : top_comment.get('authorDisplayName', 'Anonymous'),
-                'published' : top_comment.get('publishedAt', ''),
-                'reply_count': item['snippet'].get('totalReplyCount', 0),
-            })
-
-        page_token = data.get('nextPageToken')
-        if not page_token:
-            break
-
-        time.sleep(0.1)
+            if REQUEST_DELAY_S > 0:
+                time.sleep(REQUEST_DELAY_S)
 
     fetch_elapsed = time.time() - fetch_start
     logger.info(f'[YT] Fetched {len(comments)} comments in {fetch_elapsed:.1f}s')
@@ -211,35 +254,39 @@ def fetch_comments(
 
 
 # =============================================================================
-# PIPELINED — fetches pages in a background thread, yields pages via a queue
-# so the predictor can start processing page 1 while page 2 is being fetched
+# PIPELINED FETCH — fetches in background thread, yields pages via queue
 # =============================================================================
+@timing_decorator
 def fetch_comments_pipelined(
     video_id     : str,
     api_key      : str,
     max_comments : int = 500,
     order        : str = 'time',
     fetch_timeout: int = 0,
-    queue_maxsize: int = 5,       # max pages buffered in memory at once
+    queue_maxsize: int = 5,
 ) -> Tuple[queue.Queue, Dict]:
     """
-    Start fetching comments in a background thread.
-    Returns immediately with (page_queue, metadata).
+    Start fetching comments in a background thread. Returns immediately.
 
     The caller reads pages from page_queue:
       - Each item is a List[Dict] (one page = up to 100 comments)
-      - Sentinel value None signals that fetching is complete
-      - Error value Exception signals a fetch error
+      - Sentinel None signals fetch complete
+      - An Exception object signals a fetch error
 
-    This allows the caller to start predicting page 1
-    while page 2 is still being fetched — overlapping I/O and compute.
+    This allows the caller to begin predicting page 1 while page 2 is still
+    being fetched — overlapping network I/O with model compute.
+
+    Timeline:
+      Fetch thread: [p1][p2][p3]...[pN][None]
+      Main thread:      [pred1][pred2]...[predN][aggregate]
+      Total ≈ max(fetch_time, predict_time) vs fetch_time + predict_time
 
     Args:
-        queue_maxsize : Max pages buffered in the queue at once.
-                        Backpressure — if predictor is slow, fetcher waits.
-                        5 pages × 100 comments = 500 comments max in buffer.
+        queue_maxsize : Max pages buffered at once (backpressure).
+                        If predictor is slow, fetcher blocks here rather
+                        than pulling all 19k comments into memory at once.
     Returns:
-        page_queue : Queue to read pages from
+        page_queue : Queue to read comment pages from
         metadata   : Video metadata (fetched synchronously before thread starts)
     """
     if not api_key:
@@ -248,108 +295,96 @@ def fetch_comments_pipelined(
             'Add YOUTUBE_API_KEY to your .env file.'
         )
 
-    # Fetch metadata synchronously first (needed for response)
+    # Fetch metadata synchronously — needed for the response object
     metadata = get_video_metadata(video_id, api_key)
-    logger.info(f'[YT-Pipeline] Fetching: "{metadata["title"]}" | '
-                f'{metadata["comment_count"]:,} total comments')
+    logger.info(
+        f'[YT-Pipeline] Fetching: "{metadata["title"]}" | '
+        f'{metadata["comment_count"]:,} total comments'
+    )
 
     page_queue = queue.Queue(maxsize=queue_maxsize)
 
     def _fetch_worker():
-        """Background thread: fetches pages and pushes to queue."""
+        """Background thread: fetch pages and push to queue."""
         fetched    = 0
         page_token = None
-        page_size  = min(100, max_comments)
         start_time = time.time()
 
         try:
-            while fetched < max_comments:
+            with requests.Session() as session:
+                while fetched < max_comments:
 
-                # Time-limit check
-                if fetch_timeout > 0 and (time.time() - start_time) >= fetch_timeout:
-                    logger.info(
-                        f'[YT-Pipeline] Timeout {fetch_timeout}s reached. '
-                        f'Fetched {fetched} comments total.'
-                    )
-                    break
+                    # Time-limit check
+                    if fetch_timeout > 0 and (time.time() - start_time) >= fetch_timeout:
+                        logger.info(
+                            f'[YT-Pipeline] Timeout {fetch_timeout}s reached. '
+                            f'Fetched {fetched} comments total.'
+                        )
+                        break
 
-                params = {
-                    'part'      : 'snippet',
-                    'videoId'   : video_id,
-                    'key'       : api_key,
-                    'maxResults': page_size,
-                    'order'     : order,
-                    'textFormat': 'plainText',
-                }
-                if page_token:
-                    params['pageToken'] = page_token
+                    params = {
+                        'part'      : 'snippet',
+                        'videoId'   : video_id,
+                        'key'       : api_key,
+                        'maxResults': min(100, max_comments - fetched),
+                        'order'     : order,
+                        'textFormat': 'plainText',
+                    }
+                    if page_token:
+                        params['pageToken'] = page_token
 
-                try:
-                    resp = requests.get(
-                        f'{YOUTUBE_API_BASE}/commentThreads',
-                        params=params,
-                        timeout=15,
-                    )
+                    try:
+                        resp = session.get(
+                            f'{YOUTUBE_API_BASE}/commentThreads',
+                            params  = params,
+                            timeout = 15,
+                        )
+                        _handle_error_response(resp, video_id)
+                        data = resp.json()
 
-                    if resp.status_code == 403:
-                        error_msg = resp.json().get('error', {}).get('message', '')
-                        if 'commentsDisabled' in error_msg or 'disabled' in error_msg.lower():
-                            raise ValueError('Comments are disabled for this video.')
-                        raise ValueError(f'API quota exceeded or forbidden: {error_msg}')
+                    except (ValueError, RuntimeError) as e:
+                        page_queue.put(e)
+                        return
+                    except requests.exceptions.Timeout:
+                        logger.warning('[YT-Pipeline] Page timed out, retrying...')
+                        time.sleep(2)
+                        continue
+                    except requests.exceptions.RequestException as e:
+                        page_queue.put(RuntimeError(f'YouTube API request failed: {e}'))
+                        return
 
-                    if resp.status_code == 404:
-                        raise ValueError(f'Video not found: {video_id}')
+                    page_batch = [
+                        _parse_comment_item(item)
+                        for item in data.get('items', [])
+                    ]
 
-                    resp.raise_for_status()
-                    data = resp.json()
+                    if page_batch:
+                        fetched += len(page_batch)
+                        # Blocks if queue is full (backpressure)
+                        page_queue.put(page_batch)
+                        logger.debug(
+                            f'[YT-Pipeline] Page queued: {len(page_batch)} comments '
+                            f'(total: {fetched})'
+                        )
 
-                except requests.exceptions.Timeout:
-                    logger.warning('[YT-Pipeline] Page request timed out, retrying...')
-                    time.sleep(2)
-                    continue
-                except (ValueError, RuntimeError) as e:
-                    # Put the error in the queue so the main thread sees it
-                    page_queue.put(e)
-                    return
-                except requests.exceptions.RequestException as e:
-                    page_queue.put(RuntimeError(f'YouTube API request failed: {e}'))
-                    return
+                    page_token = data.get('nextPageToken')
+                    if not page_token:
+                        break
 
-                # Build page batch
-                page_batch = []
-                for item in data.get('items', []):
-                    top_comment = item['snippet']['topLevelComment']['snippet']
-                    page_batch.append({
-                        'text'       : top_comment.get('textDisplay', ''),
-                        'likes'      : top_comment.get('likeCount', 0),
-                        'author'     : top_comment.get('authorDisplayName', 'Anonymous'),
-                        'published'  : top_comment.get('publishedAt', ''),
-                        'reply_count': item['snippet'].get('totalReplyCount', 0),
-                    })
-
-                if page_batch:
-                    fetched += len(page_batch)
-                    # Blocks if queue is full (backpressure) — won't over-fetch
-                    page_queue.put(page_batch)
-                    logger.debug(f'[YT-Pipeline] Queued page: {len(page_batch)} comments '
-                                 f'(total so far: {fetched})')
-
-                page_token = data.get('nextPageToken')
-                if not page_token:
-                    break
-
-                time.sleep(0.1)
+                    if REQUEST_DELAY_S > 0:
+                        time.sleep(REQUEST_DELAY_S)
 
         except Exception as e:
             page_queue.put(e)
             return
         finally:
-            # Always put sentinel so consumer knows we're done
+            # Always signal completion so consumer never hangs
             page_queue.put(None)
             elapsed = time.time() - start_time
-            logger.info(f'[YT-Pipeline] Fetch thread done: {fetched} comments in {elapsed:.1f}s')
+            logger.info(
+                f'[YT-Pipeline] Fetch thread done: {fetched} comments in {elapsed:.1f}s'
+            )
 
-    # Start background fetch thread
     thread = threading.Thread(target=_fetch_worker, daemon=True)
     thread.start()
 
@@ -364,7 +399,7 @@ def comments_to_texts(comments: List[Dict]) -> List[str]:
     return [c['text'] for c in comments if c.get('text', '').strip()]
 
 
-# ── Mock fetcher for testing without API key ───────────────────────────────
+# ── Mock fetcher for testing without API key ──────────────────────────────
 MOCK_COMMENTS = [
     {"text": "This video is absolutely amazing! Best content on YouTube 🔥", "likes": 245},
     {"text": "vayo ni yaar ekdam ramro video thiyo, dherai helpful",           "likes": 89},

@@ -16,7 +16,7 @@ class AnalyzeRequest(BaseModel):
 
     @validator('max_comments')
     def clamp_comments(cls, v):
-        return max(10, min(v, 10000))
+        return max(10, min(v, 20000))
 
     @validator('model')
     def validate_model(cls, v):

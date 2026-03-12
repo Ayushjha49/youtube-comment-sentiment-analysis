@@ -24,7 +24,7 @@ LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 # ── API ────────────────────────────────────────────────────────────────────
 YOUTUBE_API_KEY   = os.getenv('YOUTUBE_API_KEY', '')
-MAX_COMMENTS      = int(os.getenv('MAX_COMMENTS', '10000'))  # reads from .env
+MAX_COMMENTS      = int(os.getenv('MAX_COMMENTS', '20000'))  # reads from .env
 COMMENT_ORDER     = 'relevance'  # 'relevance' or 'time'
 
 # ── Fetch time limit ────────────────────────────────────────────────────────

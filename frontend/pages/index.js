@@ -84,7 +84,7 @@ function HeroHeader() {
 function SearchForm({ onSubmit, loading }) {
   const [url, setUrl]       = useState('')
   const [model, setModel]   = useState('ensemble')
-  const [maxN, setMaxN]     = useState(1000)
+  const [maxN, setMaxN]     = useState(2000)
   const [showAdv, setShowAdv] = useState(false)
   const inputRef = useRef(null)
 
@@ -206,7 +206,7 @@ function SearchForm({ onSubmit, loading }) {
             <div className="flex items-center gap-3">
               <input
                 type="range"
-                min={50} max={10000} step={50}
+                min={50} max={20000} step={50}
                 value={maxN}
                 onChange={e => setMaxN(Number(e.target.value))}
                 className="flex-1"
