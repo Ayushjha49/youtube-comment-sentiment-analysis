@@ -129,7 +129,7 @@ comment_text,sentiment
 `POST /api/analyze`
 ```json
 {
-  "url": "https://youtube.com/watch?v=...",
+  "url": "https://youtube.com/watch?v=...", 
   "max_comments": 500,
   "model": "ensemble"
 }
