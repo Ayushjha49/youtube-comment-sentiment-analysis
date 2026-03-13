@@ -179,9 +179,17 @@ class SentimentPredictor:
         if cleaned is None:
             cleaned   = self._dl_cleaner.batch_clean(texts)
         sequences = self._dl_tokenizer.texts_to_sequences(cleaned)
+        # Read sequence length from the model's actual input shape.
+        # Using DLConfig.MAX_SEQ_LEN would break after retraining with
+        # a different sequence length since config and model would diverge.
+        try:
+            model_seq_len = self._dl_model.input_shape[1]
+        except Exception:
+            model_seq_len = DLConfig.MAX_SEQ_LEN
+
         padded    = pad_sequences(
             sequences,
-            maxlen     = DLConfig.MAX_SEQ_LEN,
+            maxlen     = model_seq_len,
             padding    = 'post',
             truncating = 'post',
         )
@@ -334,7 +342,7 @@ class SentimentPredictor:
 
         # Overall sentiment = highest average probability
         overall_sentiment  = max(dist, key=dist.get)
-        overall_confidence = avg_scores[overall_sentiment]
+        overall_confidence = dist[overall_sentiment] / 100
 
         # Top comments for each sentiment
         def top_comments(sentiment: str, n: int = 5) -> List[str]:
@@ -469,7 +477,7 @@ class SentimentPredictor:
         avg_scores = {label: float(proba[:, j].mean()) for j, label in enumerate(self.LABELS)}
 
         overall_sentiment  = max(dist, key=dist.get)
-        overall_confidence = avg_scores[overall_sentiment]
+        overall_confidence = dist[overall_sentiment] / 100
 
         def top_comments(sentiment: str, n: int = 5) -> List[str]:
             candidates = [

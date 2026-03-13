@@ -39,7 +39,7 @@ SPAM_PATTERNS = [
     r'visit\s*my\s*channel',
     r'please\s*subscribe',
     r'first\s*comment',
-    r'(?:f+i+r+s+t+|1st)\s*(?:comment)?',
+    r'\b(?:f+i+r+s+t+|1st)\s+comment\b',
 ]
 
 

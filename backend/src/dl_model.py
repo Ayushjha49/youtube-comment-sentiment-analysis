@@ -19,7 +19,6 @@ EXPECTED ACCURACY: 85-91% on 125k romanized/code-mixed dataset
 """
 
 import os
-import sys
 import pickle
 import numpy as np
 import tensorflow as tf
@@ -28,7 +27,7 @@ from tensorflow.keras import layers, Model, Input
 from tensorflow.keras.preprocessing.text import Tokenizer
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 from tensorflow.keras.callbacks import (
-    EarlyStopping, ModelCheckpoint, ReduceLROnPlateau, TensorBoard
+    EarlyStopping, ModelCheckpoint, ReduceLROnPlateau
 )
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.regularizers import l2
@@ -244,40 +243,57 @@ class DLDataPipeline:
         print(f'[DL] Label map: {label_map}')
 
         # Stratified splits
-        X_temp, X_test, y_temp, y_test = train_test_split(
-            df['cleaned_text'].tolist(), y_cat,
-            test_size    = cfg.TEST_SIZE,
-            random_state = cfg.RANDOM_SEED,
-            stratify     = y,
-        )
+        texts = df['cleaned_text'].tolist()
 
-        val_ratio = cfg.VAL_SIZE / (1 - cfg.TEST_SIZE)
-        X_train, X_val, y_train, y_val = train_test_split(
-            X_temp, y_temp,
-            test_size    = val_ratio,
-            random_state = cfg.RANDOM_SEED,
-            stratify     = y_temp.argmax(axis=1),
-        )
+        if cfg.TEST_SIZE > 0:
+            X_temp, X_test, y_temp, y_test = train_test_split(
+                texts, y_cat,
+                test_size    = cfg.TEST_SIZE,
+                random_state = cfg.RANDOM_SEED,
+                stratify     = y,
+            )
+            val_ratio = cfg.VAL_SIZE / (1 - cfg.TEST_SIZE)
+            X_train, X_val, y_train, y_val = train_test_split(
+                X_temp, y_temp,
+                test_size    = val_ratio,
+                random_state = cfg.RANDOM_SEED,
+                stratify     = y_temp.argmax(axis=1),
+            )
+            y_test_raw = y_test.argmax(axis=1)
+        else:
+            # 99% train / 1% val — no test split
+            X_train, X_val, y_train, y_val = train_test_split(
+                texts, y_cat,
+                test_size    = cfg.VAL_SIZE,
+                random_state = cfg.RANDOM_SEED,
+                stratify     = y,
+            )
+            X_test, y_test, y_test_raw = [], np.array([]), np.array([])
+            print(f'[DL] No test split — {len(X_train):,} train / {len(X_val):,} val')
 
-        # Tokenize
+        # Tokenize on train only — never fit on val or test data
         self.tokenizer.fit_on_texts(X_train)
         print(f'[DL] Vocab size: {len(self.tokenizer.word_index):,}')
 
-        def _pad(texts):
-            seqs = self.tokenizer.texts_to_sequences(texts)
+        def _pad(txts):
+            if not txts: return np.array([])
+            seqs = self.tokenizer.texts_to_sequences(txts)
             return pad_sequences(seqs, maxlen=cfg.MAX_SEQ_LEN, padding='post', truncating='post')
 
         X_train_pad = _pad(X_train)
         X_val_pad   = _pad(X_val)
         X_test_pad  = _pad(X_test)
 
-        print(f'[DL] Train: {X_train_pad.shape} | Val: {X_val_pad.shape} | Test: {X_test_pad.shape}')
+        if cfg.TEST_SIZE > 0:
+            print(f'[DL] Train: {X_train_pad.shape} | Val: {X_val_pad.shape} | Test: {X_test_pad.shape}')
+        else:
+            print(f'[DL] Train: {X_train_pad.shape} | Val: {X_val_pad.shape}')
 
         return {
             'X_train': X_train_pad, 'y_train': y_train,
             'X_val':   X_val_pad,   'y_val':   y_val,
             'X_test':  X_test_pad,  'y_test':  y_test,
-            'y_test_raw': y_test.argmax(axis=1),
+            'y_test_raw': y_test_raw,
             'vocab_size': min(len(self.tokenizer.word_index) + 1, cfg.VOCAB_SIZE + 1),
             'label_encoder': self.label_encoder,
         }
@@ -394,20 +410,22 @@ def train_dl(data: dict, save_dir: str, cfg=None, architecture: str = 'bilstm') 
     )
 
     # ── Evaluate ────────────────────────────────────────────────────────────
-    test_proba = model.predict(data['X_test'], batch_size=cfg.BATCH_SIZE)
-    test_preds = test_proba.argmax(axis=1)
-    y_test_raw = data['y_test_raw']
     le         = data['label_encoder']
+    y_test_raw = data['y_test_raw']
 
-    acc = accuracy_score(y_test_raw, test_preds)
-    f1  = f1_score(y_test_raw, test_preds, average='weighted')
-
-    print(f'\n[DL] Test Accuracy : {acc:.4f}')
-    print(f'[DL] Test F1       : {f1:.4f}')
-    print(classification_report(
-        y_test_raw, test_preds,
-        target_names=le.classes_, digits=4
-    ))
+    if len(data['X_test']) > 0:
+        test_proba = model.predict(data['X_test'], batch_size=cfg.BATCH_SIZE)
+        test_preds = test_proba.argmax(axis=1)
+        acc = accuracy_score(y_test_raw, test_preds)
+        f1  = f1_score(y_test_raw, test_preds, average='weighted')
+        print(f'\n[DL] Test Accuracy : {acc:.4f}')
+        print(f'[DL] Test F1       : {f1:.4f}')
+        print(classification_report(y_test_raw, test_preds, target_names=le.classes_, digits=4))
+    else:
+        test_proba = np.array([])
+        test_preds = np.array([])
+        acc, f1    = 0.0, 0.0
+        print('\n[DL] No test set — evaluation skipped (TEST_SIZE=0.0)')
 
     final_path = os.path.join(save_dir, 'dl_bilstm_final.keras')
     model.save(final_path)
