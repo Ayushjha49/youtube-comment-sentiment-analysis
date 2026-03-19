@@ -1,303 +1,428 @@
+/* ═══════════════════════════════════════════════════
+   ResultsDashboard.jsx
+   Full results view — verdict, chart, stats, comments.
+   ═══════════════════════════════════════════════════ */
+
 import SentimentChart from './SentimentChart'
 
-const SENTIMENT_CONFIG = {
+const SC = {
   positive: {
-    color  : '#00e5a0',
-    glow   : 'rgba(0, 229, 160, 0.2)',
-    border : 'rgba(0, 229, 160, 0.3)',
-    bg     : 'rgba(0, 229, 160, 0.06)',
-    emoji  : '😊',
-    label  : 'Positive',
-    gradient: 'linear-gradient(135deg, rgba(0,229,160,0.15) 0%, rgba(0,229,160,0.05) 100%)',
+    label    : 'Positive',
+    color    : '#059669',
+    bg       : '#ECFDF5',
+    border   : '#A7F3D0',
+    textDark : '#065F46',
   },
   negative: {
-    color  : '#ff3d6e',
-    glow   : 'rgba(255, 61, 110, 0.2)',
-    border : 'rgba(255, 61, 110, 0.3)',
-    bg     : 'rgba(255, 61, 110, 0.06)',
-    emoji  : '😞',
-    label  : 'Negative',
-    gradient: 'linear-gradient(135deg, rgba(255,61,110,0.15) 0%, rgba(255,61,110,0.05) 100%)',
+    label    : 'Negative',
+    color    : '#DC2626',
+    bg       : '#FEF2F2',
+    border   : '#FECACA',
+    textDark : '#7F1D1D',
   },
   neutral: {
-    color  : '#f0b429',
-    glow   : 'rgba(240, 180, 41, 0.2)',
-    border : 'rgba(240, 180, 41, 0.3)',
-    bg     : 'rgba(240, 180, 41, 0.06)',
-    emoji  : '😐',
-    label  : 'Neutral',
-    gradient: 'linear-gradient(135deg, rgba(240,180,41,0.15) 0%, rgba(240,180,41,0.05) 100%)',
+    label    : 'Neutral',
+    color    : '#D97706',
+    bg       : '#FFFBEB',
+    border   : '#FDE68A',
+    textDark : '#78350F',
   },
 }
 
-// ── Overall Sentiment Hero Banner ───────────────────────────────────────────
-function OverallSentimentBanner({ sentiment, confidence, videoTitle, channel, thumbnail }) {
-  const cfg = SENTIMENT_CONFIG[sentiment] || SENTIMENT_CONFIG.neutral
-
-  const confidencePct = Math.round(confidence * 100)
-  const confidenceLabel =
-    confidencePct >= 70 ? 'High confidence' :
-    confidencePct >= 50 ? 'Moderate confidence' :
-    'Low confidence'
+/* ── Video info + verdict hero ──────────────────── */
+function VerdictHero({ result }) {
+  const cfg      = SC[result.overall_sentiment] || SC.neutral
+  const conf     = Math.round(result.overall_confidence * 100)
+  const confText = conf >= 75 ? 'High confidence'
+                 : conf >= 55 ? 'Moderate confidence'
+                 : 'Low confidence'
 
   return (
     <div
-      className="glass-card relative overflow-hidden p-8 animate-slide-up"
-      style={{ background: cfg.gradient, borderColor: cfg.border }}
+      className="card anim-u0"
+      style={{
+        padding : 26,
+        display : 'flex',
+        gap     : 22,
+        flexWrap: 'wrap',
+        alignItems: 'flex-start',
+      }}
     >
-      {/* Glow orb */}
-      <div
-        className="absolute -top-20 -right-20 w-64 h-64 rounded-full blur-3xl pointer-events-none"
-        style={{ background: cfg.glow, opacity: 0.5 }}
-      />
-      <div
-        className="absolute -bottom-20 -left-20 w-48 h-48 rounded-full blur-3xl pointer-events-none"
-        style={{ background: cfg.glow, opacity: 0.3 }}
-      />
+      {/* Thumbnail */}
+      {result.thumbnail ? (
+        <img
+          src={result.thumbnail}
+          alt=""
+          style={{
+            width      : 108,
+            height     : 74,
+            objectFit  : 'cover',
+            borderRadius: 10,
+            flexShrink : 0,
+            border     : '1px solid #E4E3DB',
+          }}
+        />
+      ) : (
+        <div
+          style={{
+            width          : 108,
+            height         : 74,
+            borderRadius   : 10,
+            background     : '#FF0000',
+            display        : 'flex',
+            alignItems     : 'center',
+            justifyContent : 'center',
+            flexShrink     : 0,
+          }}
+        >
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="white">
+            <path d="M8 5v14l11-7z" />
+          </svg>
+        </div>
+      )}
 
-      <div className="relative z-10">
-        {/* Video info */}
-        {videoTitle && (
-          <div className="flex items-start gap-4 mb-6">
-            {thumbnail && (
-              <img
-                src={thumbnail}
-                alt="Thumbnail"
-                className="w-20 h-14 object-cover rounded-lg shrink-0"
-                style={{ border: `1px solid ${cfg.border}` }}
-              />
-            )}
-            <div className="min-w-0">
-              <p className="font-display font-bold text-white text-base leading-snug line-clamp-2">
-                {videoTitle}
-              </p>
-              {channel && (
-                <p className="text-sm text-white/40 mt-1 font-mono">{channel}</p>
-              )}
-            </div>
+      {/* Title + channel */}
+      <div style={{ flex: 1, minWidth: 180 }}>
+        <div className="label-caps" style={{ marginBottom: 6 }}>
+          Analyzed Video
+        </div>
+        <div
+          style={{
+            fontSize    : 17,
+            fontWeight  : 700,
+            color       : '#0F172A',
+            lineHeight  : 1.4,
+            marginBottom: 5,
+          }}
+        >
+          {result.video_title || 'YouTube Video'}
+        </div>
+        {result.channel && (
+          <div style={{ fontSize: 13, color: '#6B7280' }}>
+            {result.channel}
           </div>
         )}
+      </div>
 
-        {/* Overall result */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div>
-            <p className="font-mono text-xs tracking-widest uppercase text-white/30 mb-2">
-              Overall Sentiment
-            </p>
-            <div className="flex items-center gap-3">
-              <span className="text-4xl">{cfg.emoji}</span>
-              <h2
-                className="font-display font-black text-5xl sm:text-6xl uppercase tracking-tight"
-                style={{ color: cfg.color, textShadow: `0 0 40px ${cfg.glow}` }}
-              >
-                {cfg.label}
-              </h2>
-            </div>
-          </div>
-
-          {/* Confidence meter */}
-          <div
-            className="p-4 rounded-2xl text-center min-w-[130px]"
-            style={{ background: 'rgba(0,0,0,0.3)', border: `1px solid ${cfg.border}` }}
-          >
-            <div
-              className="font-mono font-black text-4xl"
-              style={{ color: cfg.color }}
-            >
-              {confidencePct}%
-            </div>
-            <div className="font-display text-xs text-white/40 mt-1">
-              {confidenceLabel}
-            </div>
-          </div>
+      {/* Verdict pill */}
+      <div
+        style={{
+          padding      : '18px 26px',
+          borderRadius : 16,
+          background   : cfg.bg,
+          border       : `1.5px solid ${cfg.border}`,
+          textAlign    : 'center',
+          flexShrink   : 0,
+          minWidth     : 152,
+        }}
+      >
+        <div className="label-caps" style={{ marginBottom: 7 }}>
+          Overall Verdict
+        </div>
+        <div
+          style={{
+            fontSize     : 26,
+            fontWeight   : 800,
+            color        : cfg.color,
+            letterSpacing: '-0.03em',
+            lineHeight   : 1,
+          }}
+        >
+          {cfg.label}
+        </div>
+        <div
+          className="font-mono"
+          style={{
+            fontSize  : 12,
+            color     : cfg.color,
+            marginTop : 6,
+            opacity   : 0.72,
+          }}
+        >
+          {conf}% · {confText}
         </div>
       </div>
     </div>
   )
 }
 
-// ── Stat card ───────────────────────────────────────────────────────────────
-function StatCard({ label, value, sub, color }) {
+/* ── Stats grid card ────────────────────────────── */
+function StatItem({ label, value, sub }) {
   return (
     <div
-      className="glass-card-light p-4 flex flex-col gap-1"
-      style={{ borderColor: color ? `${color}22` : undefined }}
+      style={{
+        padding     : '14px 16px',
+        borderRadius: 12,
+        background  : '#F8FAFC',
+        border      : '1px solid #F1F5F9',
+      }}
     >
-      <span className="font-mono text-xs text-white/25 uppercase tracking-widest">{label}</span>
-      <span
-        className="font-display font-bold text-2xl"
-        style={{ color: color || '#fff' }}
+      <div className="label-caps" style={{ marginBottom: 5 }}>
+        {label}
+      </div>
+      <div
+        className="font-mono"
+        style={{
+          fontSize     : 21,
+          fontWeight   : 700,
+          color        : '#0F172A',
+          letterSpacing: '-0.025em',
+        }}
       >
         {value}
-      </span>
-      {sub && <span className="font-mono text-xs text-white/25">{sub}</span>}
+      </div>
+      {sub && (
+        <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 2 }}>
+          {sub}
+        </div>
+      )}
     </div>
   )
 }
 
-// ── Per-sentiment percentage card ────────────────────────────────────────────
-function SentimentPercentCard({ sentiment, pct, animDelay = 0 }) {
-  const cfg = SENTIMENT_CONFIG[sentiment]
-  return (
-    <div
-      className="glass-card p-5 flex flex-col items-center gap-2 animate-slide-up"
-      style={{
-        background    : cfg.bg,
-        borderColor   : cfg.border,
-        animationDelay: `${animDelay}ms`,
-      }}
-    >
-      <span className="text-2xl">{cfg.emoji}</span>
-      <span
-        className="font-display font-black text-3xl"
-        style={{ color: cfg.color, textShadow: `0 0 20px ${cfg.glow}` }}
-      >
-        {pct.toFixed(1)}%
-      </span>
-      <span className="font-display font-semibold text-xs text-white/50 uppercase tracking-wider">
-        {cfg.label}
-      </span>
-      {/* Mini bar */}
-      <div className="w-full mt-1 progress-bar-track">
-        <div
-          className="progress-bar-fill"
-          style={{
-            width     : `${pct}%`,
-            background: cfg.color,
-            boxShadow : `0 0 8px ${cfg.glow}`,
-          }}
-        />
-      </div>
-    </div>
+function StatsCard({ result }) {
+  const modelLabel =
+    result.model_used === 'ml+dl_ensemble' ? 'ML + DL Ensemble'
+    : result.model_used === 'dl_bilstm'    ? 'BiLSTM Only'
+    : result.model_used === 'ml_ensemble'  ? 'ML Ensemble Only'
+    : result.model_used
+
+  const coverage = Math.round(
+    (result.analyzed_count / result.total_comments_video) * 100
   )
-}
-
-// ── Sample comments ──────────────────────────────────────────────────────────
-function CommentChip({ text, sentiment }) {
-  const cfg = SENTIMENT_CONFIG[sentiment];
-  return (
-    <div
-      className="px-3 py-2 rounded-lg text-sm text-white/70 font-body"
-      style={{
-        background: cfg.bg,
-        borderLeft: `3px solid ${cfg.color}`, // <-- fix here
-        wordBreak: 'break-word',
-        overflowWrap: 'break-word',
-        maxWidth: '100%',
-        whiteSpace: 'pre-line',
-        overflowX: 'auto',
-      }}
-    >
-      {text}
-    </div>
-  );
-}
-
-// ── Main results dashboard ───────────────────────────────────────────────────
-export default function ResultsDashboard({ result, onReset }) {
-  const { distribution, top_positive, top_negative } = result
 
   return (
-    <div className="w-full max-w-3xl mx-auto space-y-5">
-
-      {/* Overall sentiment */}
-      <OverallSentimentBanner
-        sentiment   = {result.overall_sentiment}
-        confidence  = {result.overall_confidence}
-        videoTitle  = {result.video_title}
-        channel     = {result.channel}
-        thumbnail   = {result.thumbnail}
-      />
-
-      {/* 3 percentage cards */}
-      <div className="grid grid-cols-3 gap-3">
-        <SentimentPercentCard sentiment="positive" pct={distribution.positive} animDelay={50}  />
-        <SentimentPercentCard sentiment="negative" pct={distribution.negative} animDelay={100} />
-        <SentimentPercentCard sentiment="neutral"  pct={distribution.neutral}  animDelay={150} />
-      </div>
-
-      {/* Chart */}
-      <SentimentChart distribution={distribution} />
-
-      {/* Stats row */}
+    <div className="card anim-u2" style={{ padding: 26 }}>
       <div
-        className="grid grid-cols-2 sm:grid-cols-4 gap-3 animate-slide-up"
-        style={{ animationDelay: '0.3s' }}
+        style={{
+          fontSize    : 15,
+          fontWeight  : 700,
+          color       : '#0F172A',
+          marginBottom: 18,
+        }}
       >
-        <StatCard
+        Analysis Stats
+      </div>
+
+      <div
+        style={{
+          display              : 'grid',
+          gridTemplateColumns  : '1fr 1fr',
+          gap                  : 12,
+          marginBottom         : 14,
+        }}
+      >
+        <StatItem
           label="Analyzed"
           value={result.analyzed_count.toLocaleString()}
           sub="comments"
         />
-        <StatCard
-          label="Total Comments"
+        <StatItem
+          label="Total on Video"
           value={result.total_comments_video.toLocaleString()}
-          sub="on video"
+          sub="comments"
         />
-        <StatCard
+        <StatItem
           label="Model"
-          value={result.model_used.replace('ml+dl_', '').replace('_', ' ')}
-          sub={result.model_used}
+          value={modelLabel}
+          sub="prediction engine"
         />
-        <StatCard
-          label="Total Time"
+        <StatItem
+          label="Processing Time"
           value={`${result.processing_time_s.toFixed(1)}s`}
           sub="fetch + predict"
         />
       </div>
 
-      {/* Sample comments */}
-      {(top_positive?.length > 0 || top_negative?.length > 0) && (
-        <div
-          className="glass-card p-5 animate-slide-up"
-          style={{ animationDelay: '0.4s' }}
-        >
-          <h3 className="font-display font-bold text-sm text-white/70 mb-4">
-            Sample Comments
-          </h3>
-          <div className="grid sm:grid-cols-2 gap-3">
-            {/* Positive samples */}
-            <div>
-              <p className="font-mono text-xs text-white/25 uppercase tracking-widest mb-2">
-                😊 Most Positive
-              </p>
-              <div className="space-y-2">
-                {top_positive?.slice(0, 3).map((text, i) => (
-                  <CommentChip key={i} text={text} sentiment="positive" />
-                ))}
-              </div>
-            </div>
-            {/* Negative samples */}
-            <div>
-              <p className="font-mono text-xs text-white/25 uppercase tracking-widest mb-2">
-                😞 Most Negative
-              </p>
-              <div className="space-y-2">
-                {top_negative?.slice(0, 3).map((text, i) => (
-                  <CommentChip key={i} text={text} sentiment="negative" />
-                ))}
-              </div>
-            </div>
+      {/* Coverage bar */}
+      <div
+        style={{
+          padding     : '12px 16px',
+          borderRadius: 12,
+          background  : '#F8FAFC',
+          border      : '1px solid #F1F5F9',
+          display     : 'flex',
+          alignItems  : 'center',
+          justifyContent: 'space-between',
+          gap         : 12,
+        }}
+      >
+        <div>
+          <div className="label-caps" style={{ marginBottom: 3 }}>
+            Coverage
+          </div>
+          <div style={{ fontSize: 12, color: '#6B7280' }}>
+            Comments analyzed vs total
           </div>
         </div>
-      )}
-
-      {/* Reset button */}
-      <div className="flex justify-center pt-2 pb-8">
-        <button
-          onClick={onReset}
-          className="font-display font-semibold text-sm text-white/30 hover:text-white/70 transition-colors duration-200 flex items-center gap-2 px-5 py-3 rounded-xl"
-          style={{ border: '1px solid rgba(255,255,255,0.08)' }}
+        <div
+          className="font-mono"
+          style={{
+            fontSize     : 20,
+            fontWeight   : 700,
+            color        : '#0F172A',
+            letterSpacing: '-0.025em',
+            flexShrink   : 0,
+          }}
         >
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-            <path
-              d="M12 7A5 5 0 1 1 7 2M7 2L5 4M7 2L9 4"
-              stroke="currentColor" strokeWidth="1.5"
-              strokeLinecap="round" strokeLinejoin="round"
-            />
-          </svg>
-          Analyze another video
+          {coverage}%
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ── Comment chip ───────────────────────────────── */
+function CommentChip({ text, type }) {
+  const c = SC[type] || SC.neutral
+  return (
+    <div
+      style={{
+        padding     : '10px 14px',
+        borderRadius: '0 10px 10px 0',
+        background  : c.bg,
+        borderLeft  : `3px solid ${c.color}`,
+        fontSize    : 13,
+        color       : '#334155',
+        lineHeight  : 1.55,
+        wordBreak   : 'break-word',
+      }}
+    >
+      {text}
+    </div>
+  )
+}
+
+/* ── Comments section ───────────────────────────── */
+function CommentsSection({ top_positive, top_negative }) {
+  if (!top_positive?.length && !top_negative?.length) return null
+
+  const cols = [
+    { list: top_positive, type: 'positive', heading: 'Most Positive' },
+    { list: top_negative, type: 'negative', heading: 'Most Negative' },
+  ]
+
+  return (
+    <div className="card anim-u3" style={{ padding: 26 }}>
+      <div
+        style={{
+          fontSize    : 15,
+          fontWeight  : 700,
+          color       : '#0F172A',
+          marginBottom: 22,
+        }}
+      >
+        Sample Comments
+      </div>
+
+      <div
+        style={{
+          display             : 'grid',
+          gridTemplateColumns : '1fr 1fr',
+          gap                 : 28,
+        }}
+        className="sm-stack"
+      >
+        {cols.map(({ list, type, heading }) => {
+          const c = SC[type]
+          return (
+            <div key={type}>
+              {/* Column heading */}
+              <div
+                style={{
+                  display     : 'flex',
+                  alignItems  : 'center',
+                  gap         : 7,
+                  marginBottom: 12,
+                }}
+              >
+                <div
+                  style={{
+                    width: 7, height: 7,
+                    borderRadius: '50%',
+                    background: c.color,
+                    flexShrink: 0,
+                  }}
+                />
+                <span
+                  style={{
+                    fontSize      : 10.5,
+                    fontWeight    : 700,
+                    color         : c.color,
+                    textTransform : 'uppercase',
+                    letterSpacing : '0.08em',
+                  }}
+                >
+                  {heading}
+                </span>
+              </div>
+
+              {/* Chips */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
+                {list?.slice(0, 3).map((text, i) => (
+                  <CommentChip key={i} text={text} type={type} />
+                ))}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+/* ── Main export ────────────────────────────────── */
+export default function ResultsDashboard({ result, onReset }) {
+  const { distribution, top_positive, top_negative } = result
+
+  return (
+    <div
+      style={{
+        maxWidth: 900,
+        margin  : '0 auto',
+        padding : '90px 20px 80px',
+        display : 'flex',
+        flexDirection: 'column',
+        gap     : 18,
+      }}
+    >
+      {/* Verdict hero */}
+      <VerdictHero result={result} />
+
+      {/* Two-column: chart + stats */}
+      <div
+        style={{
+          display             : 'grid',
+          gridTemplateColumns : 'minmax(0,1.1fr) minmax(0,0.9fr)',
+          gap                 : 18,
+        }}
+        className="sm-stack anim-u1"
+      >
+        <SentimentChart distribution={distribution} />
+        <StatsCard result={result} />
+      </div>
+
+      {/* Comments */}
+      <CommentsSection
+        top_positive={top_positive}
+        top_negative={top_negative}
+      />
+
+      {/* Reset CTA */}
+      <div className="anim-u4" style={{ textAlign: 'center', paddingTop: 6 }}>
+        <button
+          className="btn-primary"
+          onClick={onReset}
+          style={{ padding: '14px 32px', fontSize: 14 }}
+        >
+          ← Analyze another video
         </button>
+        <p
+          className="font-mono"
+          style={{ fontSize: 11.5, color: '#9CA3AF', marginTop: 14 }}
+        >
+          Powered by BiLSTM + Attention + ML Ensemble · EN / NE / HI
+        </p>
       </div>
     </div>
   )

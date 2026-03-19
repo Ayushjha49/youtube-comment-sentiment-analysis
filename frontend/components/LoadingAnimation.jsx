@@ -1,243 +1,184 @@
-import { useEffect, useState } from 'react'
+/* ═══════════════════════════════════════════════════
+   LoadingAnimation.jsx
+   Step-by-step progress tracker while backend runs.
+   ═══════════════════════════════════════════════════ */
 
-// Steps now have REALISTIC time estimates — no fake 1.2s / 2.4s / 3.6s delays.
-// The active step advances based on real elapsed time passed in from the parent.
 const STEPS = [
-  {
-    id        : 'fetch',
-    icon      : '📡',
-    label     : 'Fetching YouTube comments',
-    sub       : 'Connecting to YouTube Data API v3 · ~30–90s depending on count',
-    color     : '#6c63ff',
-    startAt   : 0,    // becomes active at 0s elapsed
-  },
-  {
-    id        : 'clean',
-    icon      : '🧹',
-    label     : 'Cleaning & normalizing text',
-    sub       : 'Handling Romanized Nepali/Hindi + English + emojis',
-    color     : '#4ecdc4',
-    startAt   : 15,   // becomes active at ~15s elapsed (still fetching but also cleaning)
-  },
-  {
-    id        : 'model',
-    icon      : '🧠',
-    label     : 'Running sentiment model',
-    sub       : 'BiLSTM + Attention · ML Ensemble · per-comment predictions',
-    color     : '#f0b429',
-    startAt   : 40,   // model runs after fetch completes
-  },
-  {
-    id        : 'results',
-    icon      : '📊',
-    label     : 'Aggregating & generating results',
-    sub       : 'Computing distribution · picking top comments',
-    color     : '#00e5a0',
-    startAt   : 70,   // final stage
-  },
+  { label: 'Fetching comments from YouTube',   threshold: 1  },
+  { label: 'Preprocessing & tokenizing text',  threshold: 3  },
+  { label: 'Running BiLSTM + ML inference',    threshold: 6  },
+  { label: 'Aggregating sentiment scores',     threshold: 10 },
 ]
 
-function PulsingRing({ color }) {
+/* ── Checkmark icon ─────────────────────────────── */
+function CheckIcon() {
   return (
-    <div className="relative flex items-center justify-center" style={{ width: 36, height: 36 }}>
-      <div className="absolute inset-0 rounded-full animate-ping" style={{ background: color, opacity: 0.2 }} />
-      <div className="absolute inset-1 rounded-full animate-pulse" style={{ background: color, opacity: 0.4 }} />
-      <div className="relative w-3 h-3 rounded-full" style={{ background: color, boxShadow: `0 0 12px ${color}` }} />
-    </div>
+    <svg
+      width="11" height="11" viewBox="0 0 11 11" fill="none"
+      style={{ animation: 'sv-checkpop 0.35s cubic-bezier(0.16,1,0.3,1) both' }}
+    >
+      <path
+        d="M2 5.5l2.5 2.5L9 3"
+        stroke="white" strokeWidth="1.7"
+        strokeLinecap="round" strokeLinejoin="round"
+      />
+    </svg>
   )
 }
 
-function CheckIcon({ color }) {
-  return (
-    <div className="flex items-center justify-center rounded-full"
-      style={{ width: 36, height: 36, background: `${color}22`, border: `1.5px solid ${color}` }}>
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-        <path d="M3 8l3.5 3.5L13 5" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    </div>
-  )
-}
-
-function PendingIcon() {
-  return (
-    <div className="flex items-center justify-center rounded-full"
-      style={{ width: 36, height: 36, background: 'rgba(255,255,255,0.04)', border: '1.5px solid rgba(255,255,255,0.1)' }}>
-      <div className="w-2 h-2 rounded-full bg-white/20" />
-    </div>
-  )
-}
-
-function NeuralBackground() {
-  return (
-    <div className="absolute inset-0 overflow-hidden rounded-2xl pointer-events-none">
-      <svg className="absolute inset-0 w-full h-full opacity-10" viewBox="0 0 400 300">
-        {[[60,60],[60,150],[60,240],[160,40],[160,110],[160,190],[160,260],[260,70],[260,150],[260,230],[340,100],[340,200]]
-          .map(([x, y], i) => (
-          <circle key={i} cx={x} cy={y} r="5" fill="#6c63ff" opacity="0.6">
-            <animate attributeName="opacity" values="0.3;0.8;0.3" dur={`${1.5 + i*0.2}s`} repeatCount="indefinite" />
-          </circle>
-        ))}
-        {[[60,60,160,40],[60,60,160,110],[60,150,160,110],[60,150,160,190],[60,240,160,190],[60,240,160,260],
-          [160,40,260,70],[160,110,260,70],[160,110,260,150],[160,190,260,150],[160,190,260,230],[160,260,260,230],
-          [260,70,340,100],[260,150,340,100],[260,150,340,200],[260,230,340,200]]
-          .map(([x1,y1,x2,y2], i) => (
-          <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#6c63ff" strokeWidth="1">
-            <animate attributeName="opacity" values="0.1;0.4;0.1" dur={`${2 + i*0.1}s`} repeatCount="indefinite" />
-          </line>
-        ))}
-      </svg>
-    </div>
-  )
-}
-
-// Format seconds into a human-readable string: 0–59s → "Xs", 60+ → "Xm Ys"
-function formatElapsed(sec) {
-  if (sec < 60) return `${sec}s`
-  const m = Math.floor(sec / 60)
-  const s = sec % 60
-  return s > 0 ? `${m}m ${s}s` : `${m}m`
-}
-
-export default function LoadingAnimation({ videoUrl, elapsed = 0 }) {
-  const [dots, setDots] = useState('')
-
-  // Determine active step from real elapsed time
-  const activeStepIndex = STEPS.reduce((best, step, i) => {
-    return elapsed >= step.startAt ? i : best
-  }, 0)
-
-  const completedStepIds = STEPS
-    .filter((_, i) => i < activeStepIndex)
-    .map(s => s.id)
-
-  // Animated dots
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setDots(d => d.length >= 3 ? '' : d + '.')
-    }, 500)
-    return () => clearInterval(interval)
-  }, [])
-
-  // Smooth progress: within a step, interpolate toward the next step's startAt
-  const currentStep  = STEPS[activeStepIndex]
-  const nextStep     = STEPS[activeStepIndex + 1]
-  const stepProgress = nextStep
-    ? Math.min(1, (elapsed - currentStep.startAt) / (nextStep.startAt - currentStep.startAt))
-    : Math.min(1, (elapsed - currentStep.startAt) / 30)
-  const overallPct = Math.min(98, ((activeStepIndex + stepProgress) / STEPS.length) * 100)
+/* ── Individual step row ────────────────────────── */
+function StepRow({ label, status, isLast }) {
+  const done   = status === 'done'
+  const active = status === 'active'
 
   return (
-    <div className="glass-card relative overflow-hidden p-8 w-full max-w-2xl mx-auto animate-slide-up">
-      <NeuralBackground />
-
-      {/* Header */}
-      <div className="relative z-10 text-center mb-8">
-        <div className="flex items-center justify-center gap-3 mb-3">
-          <div className="relative w-10 h-10">
-            <svg className="w-10 h-10 -rotate-90" viewBox="0 0 36 36">
-              <circle cx="18" cy="18" r="14" fill="none" stroke="rgba(108,99,255,0.15)" strokeWidth="3"/>
-              <circle
-                cx="18" cy="18" r="14" fill="none"
-                stroke="url(#gradient-loader)" strokeWidth="3"
-                strokeLinecap="round"
-                strokeDasharray="60 88"
-                style={{ animation: 'spin 1s linear infinite' }}
-              />
-              <defs>
-                <linearGradient id="gradient-loader" x1="0%" y1="0%" x2="100%" y2="0%">
-                  <stop offset="0%" stopColor="#6c63ff" />
-                  <stop offset="100%" stopColor="#00e5a0" />
-                </linearGradient>
-              </defs>
-            </svg>
-          </div>
-          <h3 className="font-display font-bold text-xl text-white">
-            Analyzing comments{dots}
-          </h3>
-        </div>
-
-        {/* Live elapsed timer — the key UX fix */}
-        <div className="flex items-center justify-center gap-2 mt-1">
-          <span className="font-mono text-xs text-white/25">elapsed:</span>
+    <div
+      style={{
+        display       : 'flex',
+        alignItems    : 'center',
+        gap           : 14,
+        padding       : '13px 22px',
+        borderBottom  : isLast ? 'none' : '1px solid #F1F5F9',
+        background    : active ? '#FAFAF8' : 'transparent',
+        transition    : 'background 0.3s',
+      }}
+    >
+      {/* Circle status */}
+      <div
+        style={{
+          width           : 26,
+          height          : 26,
+          borderRadius    : '50%',
+          flexShrink      : 0,
+          display         : 'flex',
+          alignItems      : 'center',
+          justifyContent  : 'center',
+          background      : done ? '#0F172A' : active ? 'transparent' : '#F1F5F9',
+          border          : active ? '1.5px solid #E2E8F0' : 'none',
+          transition      : 'background 0.3s, border 0.3s',
+        }}
+      >
+        {done && <CheckIcon />}
+        {active && (
           <span
-            className="font-mono text-sm font-bold"
-            style={{ color: elapsed > 60 ? '#f0b429' : '#6c63ff' }}
-          >
-            {formatElapsed(elapsed)}
-          </span>
-          {elapsed > 45 && (
-            <span className="font-mono text-[10px] text-white/20">
-              (large videos take 1–2 min)
-            </span>
-          )}
-        </div>
-
-        {videoUrl && (
-          <p className="font-mono text-xs text-white/30 truncate max-w-xs mx-auto mt-2">
-            {videoUrl}
-          </p>
+            style={{
+              width: 7, height: 7,
+              borderRadius: '50%',
+              background: '#CBD5E1',
+              animation: 'sv-pulse-dot 1.2s ease-in-out infinite',
+            }}
+          />
+        )}
+        {!done && !active && (
+          <span
+            style={{
+              width: 5, height: 5,
+              borderRadius: '50%',
+              background: '#E2E8F0',
+            }}
+          />
         )}
       </div>
 
-      {/* Steps — driven by real elapsed time */}
-      <div className="relative z-10 space-y-2">
-        {STEPS.map((step, i) => {
-          const isDone    = completedStepIds.includes(step.id)
-          const isActive  = activeStepIndex === i
-          const isPending = !isDone && !isActive
+      {/* Label */}
+      <span
+        style={{
+          flex       : 1,
+          fontSize   : 13.5,
+          fontWeight : done ? 600 : active ? 500 : 400,
+          color      : done ? '#0F172A' : active ? '#475569' : '#CBD5E1',
+          transition : 'color 0.3s, font-weight 0.2s',
+        }}
+      >
+        {label}
+      </span>
 
-          return (
-            <div
-              key={step.id}
-              className={`loading-step ${isActive ? 'active' : ''} ${isDone ? 'done' : ''} ${isPending ? 'pending' : ''}`}
-              style={{ transitionDelay: `${i * 50}ms` }}
-            >
-              {isActive  ? <PulsingRing color={step.color} /> : null}
-              {isDone    ? <CheckIcon color={step.color} />   : null}
-              {isPending ? <PendingIcon />                    : null}
-
-              <div className="flex-1 min-w-0">
-                <div
-                  className="font-display font-semibold text-sm"
-                  style={{ color: isActive ? step.color : isDone ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.2)' }}
-                >
-                  {step.label}
-                </div>
-                <div className="text-xs text-white/25 mt-0.5 font-mono">{step.sub}</div>
-              </div>
-
-              <div
-                className="font-mono text-xs shrink-0"
-                style={{ color: isActive ? step.color : 'rgba(255,255,255,0.1)' }}
-              >
-                {String(i + 1).padStart(2, '0')}
-              </div>
-            </div>
-          )
-        })}
-      </div>
-
-      {/* Progress bar driven by real elapsed time */}
-      <div className="relative z-10 mt-6">
-        <div className="progress-bar-track">
-          <div
-            className="progress-bar-fill shimmer"
-            style={{
-              width     : `${overallPct}%`,
-              background: 'linear-gradient(90deg, #6c63ff, #00e5a0)',
-              transition: 'width 1s cubic-bezier(0.16, 1, 0.3, 1)',
-            }}
+      {/* Done tick */}
+      {done && (
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0 }}>
+          <path
+            d="M2.5 7l3 3 6-6"
+            stroke="#059669" strokeWidth="1.6"
+            strokeLinecap="round" strokeLinejoin="round"
           />
-        </div>
-        <div className="flex justify-between mt-2 font-mono text-xs text-white/20">
-          <span>Processing</span>
-          <span>{Math.round(overallPct)}%</span>
-        </div>
-      </div>
+        </svg>
+      )}
+    </div>
+  )
+}
 
-      <style jsx>{`
-        @keyframes spin { to { transform: rotate(360deg); } }
-      `}</style>
+/* ── Main export ────────────────────────────────── */
+export default function LoadingAnimation({ videoUrl, elapsed }) {
+  function getStatus(step, i) {
+    const prevThreshold = i === 0 ? 0 : STEPS[i - 1].threshold
+    if (elapsed > step.threshold) return 'done'
+    if (elapsed >= prevThreshold)  return 'active'
+    return 'pending'
+  }
+
+  return (
+    <div
+      style={{
+        minHeight      : '100vh',
+        display        : 'flex',
+        flexDirection  : 'column',
+        alignItems     : 'center',
+        justifyContent : 'center',
+        padding        : '110px 20px 80px',
+      }}
+    >
+      <div style={{ width: '100%', maxWidth: 440, textAlign: 'center' }}>
+
+        {/* Spinner */}
+        <div
+          style={{
+            width        : 52,
+            height       : 52,
+            margin       : '0 auto 28px',
+            border       : '3px solid #E4E3DB',
+            borderTopColor: '#0F172A',
+            borderRadius : '50%',
+            animation    : 'sv-spin 0.9s linear infinite',
+          }}
+        />
+
+        {/* Heading */}
+        <h2
+          className="font-serif"
+          style={{
+            fontSize    : 26,
+            fontStyle   : 'italic',
+            color       : '#0F172A',
+            marginBottom: 6,
+            lineHeight  : 1.2,
+          }}
+        >
+          Analyzing comments…
+        </h2>
+        <p style={{ fontSize: 13.5, color: '#9CA3AF', marginBottom: 30, lineHeight: 1.55 }}>
+          This may take a moment depending on the comment count.
+        </p>
+
+        {/* Step card */}
+        <div className="card" style={{ textAlign: 'left', overflow: 'hidden', marginBottom: 18 }}>
+          {STEPS.map((step, i) => (
+            <StepRow
+              key={i}
+              label={step.label}
+              status={getStatus(step, i)}
+              isLast={i === STEPS.length - 1}
+            />
+          ))}
+        </div>
+
+        {/* Elapsed */}
+        <p
+          className="font-mono"
+          style={{ fontSize: 12, color: '#6B7280' }}
+        >
+          {elapsed}s elapsed
+        </p>
+      </div>
     </div>
   )
 }

@@ -1,20 +1,24 @@
+/* ═══════════════════════════════════════════════════
+   SentimentChart.jsx
+   All 3 chart types: Bar (horizontal) · Pie · Radial
+   ═══════════════════════════════════════════════════ */
+
 import { useState, useEffect } from 'react'
 import {
   PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer,
-  BarChart, Bar, XAxis, YAxis, CartesianGrid,
   RadialBarChart, RadialBar,
 } from 'recharts'
 
-const COLORS = {
-  positive: '#00e5a0',
-  negative: '#ff3d6e',
-  neutral : '#f0b429',
-}
+const BARS = [
+  { key: 'positive', label: 'Positive', color: '#059669', bg: '#D1FAE5' },
+  { key: 'negative', label: 'Negative', color: '#DC2626', bg: '#FEE2E2' },
+  { key: 'neutral',  label: 'Neutral',  color: '#D97706', bg: '#FEF3C7' },
+]
 
-const GLOW_COLORS = {
-  positive: 'rgba(0, 229, 160, 0.25)',
-  negative: 'rgba(255, 61, 110, 0.25)',
-  neutral : 'rgba(240, 180, 41, 0.25)',
+const COLORS = {
+  positive: '#059669',
+  negative: '#DC2626',
+  neutral : '#D97706',
 }
 
 function buildChartData(distribution) {
@@ -25,70 +29,41 @@ function buildChartData(distribution) {
   ]
 }
 
-// ── Custom Tooltip ──────────────────────────────────────────────────────────
-function CustomTooltip({ active, payload }) {
-  if (!active || !payload?.length) return null
-  const item = payload[0]
-  const key  = item.payload?.key || item.dataKey
-  const color = COLORS[key] || '#6c63ff'
-
-  return (
-    <div
-      className="glass-card px-4 py-3"
-      style={{ border: `1px solid ${color}40`, minWidth: 140 }}
-    >
-      <div className="font-display font-bold text-sm" style={{ color }}>
-        {item.name || key}
-      </div>
-      <div className="font-mono text-2xl font-bold text-white mt-1">
-        {item.value?.toFixed(1)}%
-      </div>
-    </div>
-  )
-}
-
-// ── Pie chart label ──────────────────────────────────────────────────────────
-function PieLabel({ cx, cy, midAngle, outerRadius, value, name, key: k }) {
-  const RADIAN = Math.PI / 180
-  const r = outerRadius + 30
-  const x = cx + r * Math.cos(-midAngle * RADIAN)
-  const y = cy + r * Math.sin(-midAngle * RADIAN)
-  if (value < 5) return null
-  return (
-    <text
-      x={x} y={y}
-      fill={COLORS[k] || '#fff'}
-      textAnchor={x > cx ? 'start' : 'end'}
-      dominantBaseline="central"
-      fontSize={12}
-      fontFamily="'JetBrains Mono', monospace"
-      fontWeight="500"
-    >
-      {`${value?.toFixed(1)}%`}
-    </text>
-  )
-}
-
-// ── Toggle button ────────────────────────────────────────────────────────────
+/* ── Chart type toggle ──────────────────────────── */
 function ChartToggle({ type, onChange }) {
+  const opts = [
+    { id: 'bar',    label: '▬ Bar'    },
+    { id: 'pie',    label: '◕ Pie'    },
+    { id: 'radial', label: '◎ Radial' },
+  ]
   return (
     <div
-      className="flex p-1 rounded-xl"
-      style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
+      style={{
+        display    : 'flex',
+        padding    : 3,
+        borderRadius: 10,
+        background : '#F1F5F9',
+        border     : '1px solid #E4E3DB',
+        gap        : 2,
+      }}
     >
-      {[
-        { id: 'bar',     label: '▬ Bar',  icon: '▬' },
-        { id: 'pie',     label: '◕ Pie',  icon: '◕' },
-        { id: 'radial',  label: '◎ Radial', icon: '◎' },
-      ].map(btn => (
+      {opts.map(btn => (
         <button
           key={btn.id}
           onClick={() => onChange(btn.id)}
-          className="px-4 py-2 rounded-lg text-xs font-display font-semibold transition-all duration-200"
           style={{
-            background : type === btn.id ? 'rgba(108,99,255,0.3)' : 'transparent',
-            color      : type === btn.id ? '#fff' : 'rgba(255,255,255,0.35)',
-            border     : type === btn.id ? '1px solid rgba(108,99,255,0.5)' : '1px solid transparent',
+            padding     : '5px 12px',
+            borderRadius: 7,
+            border      : type === btn.id ? '1px solid #CBD5E1' : '1px solid transparent',
+            background  : type === btn.id ? '#FFFFFF' : 'transparent',
+            color       : type === btn.id ? '#0F172A' : '#9CA3AF',
+            fontSize    : 12,
+            fontWeight  : type === btn.id ? 600 : 500,
+            cursor      : 'pointer',
+            fontFamily  : "'Plus Jakarta Sans', sans-serif",
+            transition  : 'all 0.15s',
+            whiteSpace  : 'nowrap',
+            boxShadow   : type === btn.id ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
           }}
         >
           {btn.label}
@@ -98,111 +73,226 @@ function ChartToggle({ type, onChange }) {
   )
 }
 
-// ── Animated bar fill ────────────────────────────────────────────────────────
-function AnimatedBar({ data }) {
-  const [widths, setWidths] = useState({ positive: 0, negative: 0, neutral: 0 })
-
-  useEffect(() => {
-    const t = setTimeout(() => {
-      setWidths({
-        positive: data.find(d => d.key === 'positive')?.value || 0,
-        negative: data.find(d => d.key === 'negative')?.value || 0,
-        neutral : data.find(d => d.key === 'neutral')?.value  || 0,
-      })
-    }, 100)
-    return () => clearTimeout(t)
-  }, [data])
+/* ── Custom tooltip (shared by Pie + Radial) ─────── */
+function CustomTooltip({ active, payload }) {
+  if (!active || !payload?.length) return null
+  const item  = payload[0]
+  const key   = item.payload?.key || item.dataKey
+  const color = COLORS[key] || '#334155'
 
   return (
-    <div className="space-y-5">
-      {data.map(item => (
-        <div key={item.key}>
-          <div className="flex justify-between items-center mb-2">
-            <div className="flex items-center gap-2">
-              <div
-                className="w-2.5 h-2.5 rounded-full"
-                style={{ background: COLORS[item.key], boxShadow: `0 0 8px ${COLORS[item.key]}` }}
-              />
-              <span className="font-display font-semibold text-sm text-white/80">
-                {item.name}
-              </span>
-            </div>
-            <span
-              className="font-mono font-bold text-lg"
-              style={{ color: COLORS[item.key] }}
-            >
-              {item.value.toFixed(1)}%
-            </span>
-          </div>
-          <div className="progress-bar-track">
-            <div
-              className="progress-bar-fill"
-              style={{
-                width     : `${widths[item.key]}%`,
-                background: `linear-gradient(90deg, ${COLORS[item.key]}88, ${COLORS[item.key]})`,
-                boxShadow : `0 0 10px ${GLOW_COLORS[item.key]}`,
-              }}
-            />
-          </div>
-        </div>
-      ))}
+    <div
+      style={{
+        background  : '#FFFFFF',
+        border      : `1px solid ${color}40`,
+        borderRadius: 10,
+        padding     : '10px 14px',
+        minWidth    : 120,
+        boxShadow   : '0 4px 16px rgba(0,0,0,0.10)',
+      }}
+    >
+      <div style={{ fontSize: 12, fontWeight: 600, color: '#6B7280', marginBottom: 3 }}>
+        {item.name || key}
+      </div>
+      <div
+        style={{
+          fontFamily   : "'JetBrains Mono', monospace",
+          fontSize     : 20,
+          fontWeight   : 700,
+          color,
+          letterSpacing: '-0.02em',
+        }}
+      >
+        {item.value?.toFixed(1)}%
+      </div>
     </div>
   )
 }
 
+/* ── Pie label ──────────────────────────────────── */
+function PieLabel({ cx, cy, midAngle, outerRadius, value, payload }) {
+  const RADIAN = Math.PI / 180
+  const r = outerRadius + 28
+  const x = cx + r * Math.cos(-midAngle * RADIAN)
+  const y = cy + r * Math.sin(-midAngle * RADIAN)
+  if (value < 5) return null
+  return (
+    <text
+      x={x} y={y}
+      fill={COLORS[payload.key] || '#334155'}
+      textAnchor={x > cx ? 'start' : 'end'}
+      dominantBaseline="central"
+      fontSize={12}
+      fontFamily="'JetBrains Mono', monospace"
+      fontWeight="600"
+    >
+      {value?.toFixed(1)}%
+    </text>
+  )
+}
+
+/* ── Horizontal animated bar ─────────────────────── */
+function HBar({ label, value, color, bg, delay }) {
+  const [width, setWidth] = useState(0)
+
+  useEffect(() => {
+    const t = setTimeout(() => setWidth(value), 120 + delay)
+    return () => clearTimeout(t)
+  }, [value, delay])
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+      <div style={{ width: 80, flexShrink: 0 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: '#334155', marginBottom: 2 }}>
+          {label}
+        </div>
+        <div
+          className="font-mono"
+          style={{ fontSize: 14, fontWeight: 700, color, letterSpacing: '-0.02em' }}
+        >
+          {value.toFixed(1)}%
+        </div>
+      </div>
+
+      <div
+        style={{
+          flex        : 1,
+          height      : 42,
+          background  : bg,
+          borderRadius: 10,
+          overflow    : 'hidden',
+          position    : 'relative',
+        }}
+      >
+        <div
+          style={{
+            position    : 'absolute',
+            left: 0, top: 0, bottom: 0,
+            width       : `${width}%`,
+            background  : color,
+            borderRadius: 10,
+            opacity     : 0.78,
+            transition  : `width 1.1s cubic-bezier(0.16,1,0.3,1) ${delay}ms`,
+          }}
+        />
+        <div
+          style={{
+            position      : 'absolute',
+            left          : 14,
+            top           : '50%',
+            transform     : 'translateY(-50%)',
+            fontFamily    : "'JetBrains Mono', monospace",
+            fontSize      : 12,
+            fontWeight    : 700,
+            color         : 'white',
+            letterSpacing : '-0.02em',
+            pointerEvents : 'none',
+            opacity       : width > 18 ? 1 : 0,
+            transition    : `opacity 0.4s ${delay + 600}ms`,
+          }}
+        >
+          {value.toFixed(1)}%
+        </div>
+      </div>
+
+      <div
+        style={{
+          width          : 52,
+          height         : 28,
+          display        : 'flex',
+          alignItems     : 'center',
+          justifyContent : 'center',
+          borderRadius   : 6,
+          background     : bg,
+          border         : `1px solid ${color}30`,
+          flexShrink     : 0,
+        }}
+      >
+        <span className="font-mono" style={{ fontSize: 11.5, fontWeight: 700, color }}>
+          {value.toFixed(1)}%
+        </span>
+      </div>
+    </div>
+  )
+}
+
+/* ── Main export ────────────────────────────────── */
 export default function SentimentChart({ distribution }) {
   const [chartType, setChartType] = useState('bar')
   const data = buildChartData(distribution)
 
+  const dominant = BARS.reduce((a, b) =>
+    distribution[a.key] > distribution[b.key] ? a : b
+  )
+
   return (
-    <div className="glass-card p-6 w-full animate-slide-up" style={{ animationDelay: '0.2s' }}>
-      {/* Header + toggle */}
-      <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
+    <div className="card" style={{ padding: 26 }}>
+
+      {/* Header row */}
+      <div
+        style={{
+          display        : 'flex',
+          alignItems     : 'flex-start',
+          justifyContent : 'space-between',
+          marginBottom   : 24,
+          gap            : 12,
+          flexWrap       : 'wrap',
+        }}
+      >
         <div>
-          <h3 className="font-display font-bold text-base text-white/90">
+          <div style={{ fontSize: 15, fontWeight: 700, color: '#0F172A', marginBottom: 3 }}>
             Sentiment Distribution
-          </h3>
-          <p className="text-xs text-white/30 mt-0.5 font-mono">
+          </div>
+          <div style={{ fontSize: 12.5, color: '#9CA3AF' }}>
             % of analyzed comments
-          </p>
+          </div>
         </div>
-        <ChartToggle type={chartType} onChange={setChartType} />
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <div
+            style={{
+              padding     : '5px 12px',
+              borderRadius: 30,
+              background  : dominant.bg,
+              border      : `1px solid ${dominant.color}40`,
+              display     : 'flex',
+              alignItems  : 'center',
+              gap         : 6,
+            }}
+          >
+            <span
+              style={{
+                width: 6, height: 6, borderRadius: '50%',
+                background: dominant.color, display: 'inline-block',
+              }}
+            />
+            <span style={{ fontSize: 11.5, fontWeight: 600, color: dominant.color }}>
+              {dominant.label} dominant
+            </span>
+          </div>
+          <ChartToggle type={chartType} onChange={setChartType} />
+        </div>
       </div>
 
-      {/* Animated Bar */}
+      {/* ── Bar view ── */}
       {chartType === 'bar' && (
-        <AnimatedBar data={data} />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+          {BARS.map((bar, i) => (
+            <HBar
+              key={bar.key}
+              label={bar.label}
+              value={distribution[bar.key]}
+              color={bar.color}
+              bg={bar.bg}
+              delay={i * 160}
+            />
+          ))}
+        </div>
       )}
 
-      {/* Recharts BarChart */}
-      {chartType === 'barchart' && (
-        <ResponsiveContainer width="100%" height={220}>
-          <BarChart data={data} barCategoryGap="35%">
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-            <XAxis
-              dataKey="name"
-              tick={{ fill: 'rgba(255,255,255,0.5)', fontSize: 12, fontFamily: 'DM Sans' }}
-              axisLine={false} tickLine={false}
-            />
-            <YAxis
-              tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 11, fontFamily: 'JetBrains Mono' }}
-              axisLine={false} tickLine={false}
-              tickFormatter={v => `${v}%`}
-              domain={[0, 100]}
-            />
-            <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
-            <Bar dataKey="value" radius={[6, 6, 0, 0]}>
-              {data.map(entry => (
-                <Cell key={entry.key} fill={COLORS[entry.key]} />
-              ))}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
-      )}
-
-      {/* Pie chart */}
+      {/* ── Pie view ── */}
       {chartType === 'pie' && (
-        <ResponsiveContainer width="100%" height={260}>
+        <ResponsiveContainer width="100%" height={270}>
           <PieChart>
             <Pie
               data={data}
@@ -220,9 +310,8 @@ export default function SentimentChart({ distribution }) {
                 <Cell
                   key={entry.key}
                   fill={COLORS[entry.key]}
-                  stroke={COLORS[entry.key]}
+                  stroke="white"
                   strokeWidth={2}
-                  style={{ filter: `drop-shadow(0 0 8px ${GLOW_COLORS[entry.key]})` }}
                 />
               ))}
             </Pie>
@@ -231,7 +320,14 @@ export default function SentimentChart({ distribution }) {
               iconType="circle"
               iconSize={8}
               formatter={(value, entry) => (
-                <span style={{ color: COLORS[entry.payload.key], fontFamily: 'DM Sans', fontSize: 13 }}>
+                <span
+                  style={{
+                    color     : COLORS[entry.payload.key],
+                    fontFamily: "'Plus Jakarta Sans', sans-serif",
+                    fontSize  : 13,
+                    fontWeight: 500,
+                  }}
+                >
                   {value}
                 </span>
               )}
@@ -240,13 +336,13 @@ export default function SentimentChart({ distribution }) {
         </ResponsiveContainer>
       )}
 
-      {/* Radial bar chart */}
+      {/* ── Radial view ── */}
       {chartType === 'radial' && (
-        <ResponsiveContainer width="100%" height={240}>
+        <ResponsiveContainer width="100%" height={250}>
           <RadialBarChart
             cx="50%" cy="50%"
             innerRadius={30}
-            outerRadius={100}
+            outerRadius={105}
             data={data}
             startAngle={180}
             endAngle={-180}
@@ -255,7 +351,7 @@ export default function SentimentChart({ distribution }) {
               minAngle={5}
               dataKey="value"
               cornerRadius={6}
-              background={{ fill: 'rgba(255,255,255,0.04)' }}
+              background={{ fill: '#F1F5F9' }}
             >
               {data.map(entry => (
                 <Cell key={entry.key} fill={COLORS[entry.key]} />
@@ -266,13 +362,50 @@ export default function SentimentChart({ distribution }) {
               iconType="circle"
               iconSize={8}
               formatter={(value, entry) => (
-                <span style={{ color: COLORS[entry.payload?.key], fontFamily: 'DM Sans', fontSize: 13 }}>
+                <span
+                  style={{
+                    color     : COLORS[entry.payload?.key],
+                    fontFamily: "'Plus Jakarta Sans', sans-serif",
+                    fontSize  : 13,
+                    fontWeight: 500,
+                  }}
+                >
                   {entry.payload?.name} — {entry.payload?.value?.toFixed(1)}%
                 </span>
               )}
             />
           </RadialBarChart>
         </ResponsiveContainer>
+      )}
+
+      {/* Legend footer (bar view only) */}
+      {chartType === 'bar' && (
+        <div
+          style={{
+            marginTop : 22,
+            paddingTop: 16,
+            borderTop : '1px solid #F1F5F9',
+            display   : 'flex',
+            gap       : 18,
+            flexWrap  : 'wrap',
+          }}
+        >
+          {BARS.map(bar => (
+            <div key={bar.key} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div
+                style={{
+                  width: 8, height: 8,
+                  borderRadius: '50%',
+                  background: bar.color,
+                  flexShrink: 0,
+                }}
+              />
+              <span style={{ fontSize: 12, color: '#6B7280', fontWeight: 500 }}>
+                {bar.label}
+              </span>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   )
