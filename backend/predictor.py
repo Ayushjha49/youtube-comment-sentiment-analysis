@@ -407,7 +407,15 @@ class SentimentPredictor:
                 and _is_displayable_comment(cp.text)
             ]
             candidates.sort(key=lambda x: -x[1])
-            return [text for text, _ in candidates[:n]]
+            seen, unique = set(), []
+            for text, score in candidates:
+                key = text.strip().lower()
+                if key not in seen:
+                    seen.add(key)
+                    unique.append(text)
+                if len(unique) == n:
+                    break
+            return unique
 
         elapsed = time.time() - t0
         logger.info(f'[Predictor] Done in {elapsed:.2f}s | Overall: {overall_sentiment} ({overall_confidence:.1%})')
@@ -542,7 +550,15 @@ class SentimentPredictor:
                 and _is_displayable_comment(cp.text)
             ]
             candidates.sort(key=lambda x: -x[1])
-            return [text for text, _ in candidates[:n]]
+            seen, unique = set(), []
+            for text, score in candidates:
+                key = text.strip().lower()
+                if key not in seen:
+                    seen.add(key)
+                    unique.append(text)
+                if len(unique) == n:
+                    break
+            return unique
 
         elapsed = time.time() - t0
         logger.info(
