@@ -217,7 +217,7 @@ function HBar({ label, value, color, bg, delay }) {
 }
 
 /* ── Main export ────────────────────────────────── */
-export default function SentimentChart({ distribution }) {
+export default function SentimentChart({ distribution, analyzedCount }) {
   const [chartType, setChartType] = useState('bar')
   const data = buildChartData(distribution)
 
@@ -244,7 +244,7 @@ export default function SentimentChart({ distribution }) {
             Sentiment Distribution
           </div>
           <div style={{ fontSize: 12.5, color: '#9CA3AF' }}>
-            % of analyzed comments
+            % of analyzed comments{analyzedCount ? ` (${analyzedCount.toLocaleString()})` : ''}
           </div>
         </div>
 

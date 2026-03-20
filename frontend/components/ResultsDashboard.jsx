@@ -134,9 +134,9 @@ function VerdictHero({ result }) {
           className="font-mono"
           style={{
             fontSize  : 12,
-            color     : cfg.color,
+            color     : cfg.textDark,
             marginTop : 6,
-            opacity   : 0.72,
+            opacity   : 0.85,
           }}
         >
           {conf}% · {confText}
@@ -147,7 +147,7 @@ function VerdictHero({ result }) {
 }
 
 /* ── Stats grid card ────────────────────────────── */
-function StatItem({ label, value, sub }) {
+function StatItem({ label, value, sub, small }) {
   return (
     <div
       style={{
@@ -163,10 +163,12 @@ function StatItem({ label, value, sub }) {
       <div
         className="font-mono"
         style={{
-          fontSize     : 21,
+          fontSize     : small ? 13 : 21,
           fontWeight   : 700,
           color        : '#0F172A',
-          letterSpacing: '-0.025em',
+          letterSpacing: small ? '-0.01em' : '-0.025em',
+          lineHeight   : small ? 1.3 : 1,
+          wordBreak    : 'break-word',
         }}
       >
         {value}
@@ -187,9 +189,9 @@ function StatsCard({ result }) {
     : result.model_used === 'ml_ensemble'  ? 'ML Ensemble Only'
     : result.model_used
 
-  const coverage = Math.round(
-    (result.analyzed_count / result.total_comments_video) * 100
-  )
+  const coverage = result.total_comments_video > 0
+    ? Math.min(100, Math.round((result.analyzed_count / result.total_comments_video) * 100))
+    : 0
 
   return (
     <div className="card anim-u2" style={{ padding: 26 }}>
@@ -226,6 +228,7 @@ function StatsCard({ result }) {
           label="Model"
           value={modelLabel}
           sub="prediction engine"
+          small
         />
         <StatItem
           label="Processing Time"
@@ -398,7 +401,7 @@ export default function ResultsDashboard({ result, onReset }) {
         }}
         className="sm-stack anim-u1"
       >
-        <SentimentChart distribution={distribution} />
+        <SentimentChart distribution={distribution} analyzedCount={result.analyzed_count} />
         <StatsCard result={result} />
       </div>
 

@@ -29,6 +29,36 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 logger = logging.getLogger(__name__)
 
 
+def _is_displayable_comment(text: str) -> bool:
+    """
+    Returns True only if the comment is suitable for display in
+    top_positive / top_negative sections.
+
+    Two rules — both must pass:
+      1. NOT emoji-only: must contain at least 3 Latin letters
+         (rules out comments like "🔥🔥🔥" or "👍👍")
+      2. Primarily supported script: at least 40% of non-space
+         characters must be Latin a-z/A-Z
+         (rules out Arabic, Chinese, Japanese, Korean, Cyrillic,
+          Thai, pure Devanagari that slipped past preprocessing, etc.)
+
+    Note: this filter only affects which comments are DISPLAYED.
+    All comments still count toward the sentiment distribution.
+    """
+    latin_chars = [c for c in text if c.isalpha() and ord(c) < 128]
+
+    # Rule 1 — must have real words (not just emojis / symbols)
+    if len(latin_chars) < 3:
+        return False
+
+    # Rule 2 — must be predominantly Latin script
+    non_space = [c for c in text if not c.isspace()]
+    if not non_space:
+        return False
+
+    return len(latin_chars) / len(non_space) >= 0.40
+
+
 @dataclass
 class CommentPrediction:
     text      : str
@@ -350,6 +380,7 @@ class SentimentPredictor:
                 (cp.text, cp.scores[sentiment])
                 for cp in comment_preds
                 if cp.sentiment == sentiment
+                and _is_displayable_comment(cp.text)
             ]
             candidates.sort(key=lambda x: -x[1])
             return [text for text, _ in candidates[:n]]
@@ -484,6 +515,7 @@ class SentimentPredictor:
                 (cp.text, cp.scores[sentiment])
                 for cp in comment_preds
                 if cp.sentiment == sentiment
+                and _is_displayable_comment(cp.text)
             ]
             candidates.sort(key=lambda x: -x[1])
             return [text for text, _ in candidates[:n]]

@@ -75,7 +75,8 @@ function Topbar({ onReset, inResults }) {
           </div>
         </div>
 
-        {/* Pills (desktop only) */}
+        {/* Pills (desktop only, hide in results) */}
+        {!inResults && (
         <div className="sm-hide" style={{ display: 'flex', gap: 6 }}>
           {['BiLSTM + ML Ensemble', 'EN · NE · HI', '125k+ Training Comments'].map(tag => (
             <span
@@ -85,7 +86,7 @@ function Topbar({ onReset, inResults }) {
                 fontWeight: 500,
                 padding   : '4px 11px',
                 borderRadius: 20,
-                background: '#EFF0E8',
+                background: '#EDE3D8',
                 color     : '#6B7280',
               }}
             >
@@ -93,6 +94,7 @@ function Topbar({ onReset, inResults }) {
             </span>
           ))}
         </div>
+        )}
 
         {/* Back button when in results */}
         {inResults && (
@@ -468,7 +470,7 @@ function HeroPage({ onSubmit, loading, error, onDismissError }) {
         className="font-mono anim-u4"
         style={{
           fontSize  : 11.5,
-          color     : '#CBD5E1',
+          color     : '#94A3B8',
           marginTop : 36,
           textAlign : 'center',
           maxWidth  : 440,
