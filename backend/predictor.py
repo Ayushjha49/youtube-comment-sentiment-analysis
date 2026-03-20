@@ -77,6 +77,21 @@ def _is_displayable_comment(text: str) -> bool:
         _displayable_cache[text] = False
         return False
 
+    # Rule 4 — must have at least 4 alphabetic words
+    # Count only words that contain actual letters, ignoring timestamps,
+    # numbers, and punctuation tokens like "31.12.2025", "12:37", ">>>"
+    alpha_words = [w for w in text.strip().split() if re.search(r'[a-zA-Z]', w)]
+    if len(alpha_words) < 4:
+        _displayable_cache[text] = False
+        return False
+
+    # Rule 5 — emojis must not exceed 30% of total characters
+    # Emoji chars have ord > 127 and are not isalpha()
+    emoji_chars = [c for c in text if ord(c) > 127 and not c.isalpha()]
+    if len(text) > 0 and len(emoji_chars) / len(text) > 0.30:
+        _displayable_cache[text] = False
+        return False
+
     # Rule 3 — language detection via langdetect
     try:
         from langdetect import detect, LangDetectException
