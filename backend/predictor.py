@@ -16,6 +16,7 @@ CACHING:
 
 import os
 import sys
+import re
 import pickle
 import logging
 import time
@@ -27,6 +28,12 @@ sys.path.insert(0, os.path.dirname(__file__))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
 logger = logging.getLogger(__name__)
+
+# Cache for _is_displayable_comment results.
+# langdetect takes ~2-5ms per call — for 20k comments this adds up to
+# 40-100s without caching. The cache maps text → bool so each unique
+# comment is only language-detected once per server lifetime.
+_displayable_cache: Dict[str, bool] = {}
 
 
 def _is_displayable_comment(text: str) -> bool:
@@ -57,12 +64,17 @@ def _is_displayable_comment(text: str) -> bool:
     All comments still count toward the sentiment distribution.
     """
     # Rule 1 — reject if any alphabetic character is non-ASCII
+    if text in _displayable_cache:
+        return _displayable_cache[text]
+
     if any(c.isalpha() and ord(c) > 127 for c in text):
+        _displayable_cache[text] = False
         return False
 
     # Rule 2 — must have at least 3 real ASCII letters (not just emojis)
     ascii_alpha = [c for c in text if c.isalpha()]
     if len(ascii_alpha) < 3:
+        _displayable_cache[text] = False
         return False
 
     # Rule 3 — language detection via langdetect
@@ -71,6 +83,7 @@ def _is_displayable_comment(text: str) -> bool:
         try:
             lang = detect(text)
             if lang not in ('en', 'ne', 'hi'):
+                _displayable_cache[text] = False
                 return False
         except LangDetectException:
             pass  # too short to detect reliably — Rules 1 & 2 are enough
@@ -80,6 +93,7 @@ def _is_displayable_comment(text: str) -> bool:
             'comments may still appear in samples. Fix: pip install langdetect'
         )
 
+    _displayable_cache[text] = True
     return True
 
 
@@ -324,14 +338,14 @@ class SentimentPredictor:
         try:
             self.load_ml()
             return True
-        except:
+        except Exception:
             return False
 
     def _try_load_dl(self) -> bool:
         try:
             self.load_dl()
             return True
-        except:
+        except Exception:
             return False
 
     # ── Video-Level Analysis ──────────────────────────────────────────────
@@ -409,8 +423,10 @@ class SentimentPredictor:
             candidates.sort(key=lambda x: -x[1])
             seen, unique = set(), []
             for text, score in candidates:
-                key = text.strip().lower()
-                if key not in seen:
+                # Normalize key: lowercase, remove digits/punctuation/whitespace
+                # so "31.12.2025 Perfect 🎉" and "Perfect ✨" both → "perfect"
+                key = re.sub(r'[^a-z]', '', text.lower())
+                if key and key not in seen:
                     seen.add(key)
                     unique.append(text)
                 if len(unique) == n:
@@ -552,8 +568,8 @@ class SentimentPredictor:
             candidates.sort(key=lambda x: -x[1])
             seen, unique = set(), []
             for text, score in candidates:
-                key = text.strip().lower()
-                if key not in seen:
+                key = re.sub(r'[^a-z]', '', text.lower())
+                if key and key not in seen:
                     seen.add(key)
                     unique.append(text)
                 if len(unique) == n:

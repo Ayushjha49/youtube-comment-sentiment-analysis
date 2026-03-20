@@ -3,13 +3,6 @@
    Step-by-step progress tracker while backend runs.
    ═══════════════════════════════════════════════════ */
 
-const STEPS = [
-  { label: 'Fetching comments from YouTube',   threshold: 15 },
-  { label: 'Preprocessing & tokenizing text',  threshold: 25 },
-  { label: 'Running BiLSTM + ML inference',    threshold: 55 },
-  { label: 'Aggregating sentiment scores',     threshold: 75 },
-]
-
 /* ── Checkmark icon ─────────────────────────────── */
 function CheckIcon() {
   return (
@@ -108,7 +101,19 @@ function StepRow({ label, status, isLast }) {
 }
 
 /* ── Main export ────────────────────────────────── */
-export default function LoadingAnimation({ videoUrl, elapsed }) {
+export default function LoadingAnimation({ videoUrl, elapsed, model }) {
+  const inferenceLabel =
+    model === 'dl' ? 'Running BiLSTM inference' :
+    model === 'ml' ? 'Running ML Ensemble inference' :
+    'Running BiLSTM + ML inference'
+
+  const STEPS = [
+    { label: 'Fetching comments from YouTube',   threshold: 15 },
+    { label: 'Preprocessing & tokenizing text',  threshold: 25 },
+    { label: inferenceLabel,                     threshold: 55 },
+    { label: 'Aggregating sentiment scores',     threshold: 75 },
+  ]
+
   function getStatus(step, i) {
     const prevThreshold = i === 0 ? 0 : STEPS[i - 1].threshold
     if (elapsed > step.threshold) return 'done'

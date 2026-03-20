@@ -147,10 +147,8 @@ function ErrorBanner({ message, onDismiss }) {
 }
 
 /* ─── Search form card ───────────────────────────── */
-function SearchForm({ onSubmit, loading }) {
+function SearchForm({ onSubmit, loading, model, setModel, maxN, setMaxN }) {
   const [url,       setUrl]       = useState('')
-  const [model,     setModel]     = useState('ensemble')
-  const [maxN,      setMaxN]      = useState(2000)
   const [showAdv,   setShowAdv]   = useState(false)
   const inputRef = useRef(null)
 
@@ -381,7 +379,7 @@ function SearchForm({ onSubmit, loading }) {
 }
 
 /* ─── Idle / hero page ───────────────────────────── */
-function HeroPage({ onSubmit, loading, error, onDismissError }) {
+function HeroPage({ onSubmit, loading, error, onDismissError, model, setModel, maxN, setMaxN }) {
   return (
     <div
       style={{
@@ -463,7 +461,7 @@ function HeroPage({ onSubmit, loading, error, onDismissError }) {
       )}
 
       {/* Search card */}
-      <SearchForm onSubmit={onSubmit} loading={loading} />
+      <SearchForm onSubmit={onSubmit} loading={loading} model={model} setModel={setModel} maxN={maxN} setMaxN={setMaxN} />
 
       {/* Footer tagline */}
       <p
@@ -486,12 +484,20 @@ function HeroPage({ onSubmit, loading, error, onDismissError }) {
 
 /* ─── Main page ──────────────────────────────────── */
 export default function Home() {
-  const [state,   setState]   = useState('idle')   // idle | loading | results
-  const [result,  setResult]  = useState(null)
-  const [error,   setError]   = useState('')
-  const [lastUrl, setLastUrl] = useState('')
-  const [elapsed, setElapsed] = useState(0)
+  const [state,     setState]     = useState('idle')   // idle | loading | results
+  const [result,    setResult]    = useState(null)
+  const [error,     setError]     = useState('')
+  const [lastUrl,   setLastUrl]   = useState('')
+  const [lastModel, setLastModel] = useState('ensemble')
+  const [model,     setModel]     = useState('ensemble') // lifted up — survives error remount
+  const [maxN,      setMaxN]      = useState(2000)       // lifted up — survives error remount
+  const [elapsed,   setElapsed]   = useState(0)
   const timerRef = useRef(null)
+
+  // Cleanup timer on unmount to prevent memory leak
+  useEffect(() => {
+    return () => { if (timerRef.current) clearInterval(timerRef.current) }
+  }, [])
 
   const startTimer = () => {
     setElapsed(0)
@@ -505,6 +511,7 @@ export default function Home() {
   const handleAnalyze = async ({ url, model, max_comments }) => {
     setState('loading')
     setLastUrl(url)
+    setLastModel(model)
     setError('')
     setResult(null)
     startTimer()
@@ -563,11 +570,15 @@ export default function Home() {
             loading={false}
             error={error}
             onDismissError={() => setError('')}
+            model={model}
+            setModel={setModel}
+            maxN={maxN}
+            setMaxN={setMaxN}
           />
         )}
 
         {state === 'loading' && (
-          <LoadingAnimation videoUrl={lastUrl} elapsed={elapsed} />
+          <LoadingAnimation videoUrl={lastUrl} elapsed={elapsed} model={lastModel} />
         )}
 
         {state === 'results' && result && (

@@ -119,7 +119,7 @@ function PieLabel({ cx, cy, midAngle, outerRadius, value, payload }) {
   return (
     <text
       x={x} y={y}
-      fill={COLORS[payload.key] || '#334155'}
+      fill={COLORS[payload?.key] || '#334155'}
       textAnchor={x > cx ? 'start' : 'end'}
       dominantBaseline="central"
       fontSize={12}
@@ -322,7 +322,7 @@ export default function SentimentChart({ distribution, analyzedCount }) {
               formatter={(value, entry) => (
                 <span
                   style={{
-                    color     : COLORS[entry.payload.key],
+                    color     : COLORS[entry.payload?.key],
                     fontFamily: "'Plus Jakarta Sans', sans-serif",
                     fontSize  : 13,
                     fontWeight: 500,
