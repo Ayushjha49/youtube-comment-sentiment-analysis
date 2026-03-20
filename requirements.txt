@@ -19,6 +19,7 @@ requests>=2.31.0
 
 # ── NLP & Text ────────────────────────────────────────────────────────────
 # (No heavy NLP deps needed — custom preprocessor handles romanized text)
+langdetect>=1.0.9   # Language detection for filtering displayed sample comments
 
 # ── Visualization ─────────────────────────────────────────────────────────
 matplotlib>=3.8.0

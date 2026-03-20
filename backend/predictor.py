@@ -34,29 +34,53 @@ def _is_displayable_comment(text: str) -> bool:
     Returns True only if the comment is suitable for display in
     top_positive / top_negative sections.
 
-    Two rules — both must pass:
-      1. NOT emoji-only: must contain at least 3 Latin letters
-         (rules out comments like "🔥🔥🔥" or "👍👍")
-      2. Primarily supported script: at least 40% of non-space
-         characters must be Latin a-z/A-Z
-         (rules out Arabic, Chinese, Japanese, Korean, Cyrillic,
-          Thai, pure Devanagari that slipped past preprocessing, etc.)
+    Only English, Romanized Nepali, and Romanized Hindi are allowed.
+
+    Rule 1 — No non-ASCII alphabetic characters.
+      If even one letter has ord > 127, reject immediately.
+      Catches: Arabic, Chinese, Japanese, Korean, Cyrillic, Thai,
+               Devanagari, and accented Latin (Portuguese ã, French é,
+               Spanish ñ, German ü, etc.)
+      Emojis are not isalpha() so they are unaffected by this rule.
+
+    Rule 2 — Must have at least 3 ASCII letters.
+      Filters out emoji-only comments like "🔥🔥🔥" or "👍👍".
+
+    Rule 3 — Language must be English, Nepali, or Hindi (langdetect).
+      Catches accent-free European sentences that pass Rule 1, e.g.
+      "Esto es muy bueno" (Spanish), "C'est incroyable" (French).
+      Romanized Nepali/Hindi is typically detected as 'en' or 'hi' — fine.
+      If the text is too short to detect reliably, this rule is skipped
+      and Rules 1–2 decide.
 
     Note: this filter only affects which comments are DISPLAYED.
     All comments still count toward the sentiment distribution.
     """
-    latin_chars = [c for c in text if c.isalpha() and ord(c) < 128]
-
-    # Rule 1 — must have real words (not just emojis / symbols)
-    if len(latin_chars) < 3:
+    # Rule 1 — reject if any alphabetic character is non-ASCII
+    if any(c.isalpha() and ord(c) > 127 for c in text):
         return False
 
-    # Rule 2 — must be predominantly Latin script
-    non_space = [c for c in text if not c.isspace()]
-    if not non_space:
+    # Rule 2 — must have at least 3 real ASCII letters (not just emojis)
+    ascii_alpha = [c for c in text if c.isalpha()]
+    if len(ascii_alpha) < 3:
         return False
 
-    return len(latin_chars) / len(non_space) >= 0.40
+    # Rule 3 — language detection via langdetect
+    try:
+        from langdetect import detect, LangDetectException
+        try:
+            lang = detect(text)
+            if lang not in ('en', 'ne', 'hi'):
+                return False
+        except LangDetectException:
+            pass  # too short to detect reliably — Rules 1 & 2 are enough
+    except ImportError:
+        logger.warning(
+            '[Predictor] langdetect not installed — accent-free European '
+            'comments may still appear in samples. Fix: pip install langdetect'
+        )
+
+    return True
 
 
 @dataclass
