@@ -4,10 +4,10 @@
    ═══════════════════════════════════════════════════ */
 
 const STEPS = [
-  { label: 'Fetching comments from YouTube',   threshold: 1  },
-  { label: 'Preprocessing & tokenizing text',  threshold: 3  },
-  { label: 'Running BiLSTM + ML inference',    threshold: 6  },
-  { label: 'Aggregating sentiment scores',     threshold: 10 },
+  { label: 'Fetching comments from YouTube',   threshold: 15 },
+  { label: 'Preprocessing & tokenizing text',  threshold: 25 },
+  { label: 'Running BiLSTM + ML inference',    threshold: 55 },
+  { label: 'Aggregating sentiment scores',     threshold: 75 },
 ]
 
 /* ── Checkmark icon ─────────────────────────────── */

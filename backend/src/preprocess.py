@@ -86,7 +86,7 @@ class TextCleaner:
             '👍': ' good ', '🔥': ' amazing ',
             '💯': ' perfect ', '⭐': ' good ',
             '😒': ' disappointed ', '😤': ' frustrated ',
-            '🙏': ' respect ', '❌': ' bad ', '✅': ' good ',
+            '🙏': ' respect ', '✅': ' good ',
         }
 
     def clean(self, text: str) -> str:
